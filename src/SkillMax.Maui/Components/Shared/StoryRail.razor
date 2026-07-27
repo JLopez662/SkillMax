@@ -1,0 +1,87 @@
+@* One bubble per followed channel, above the feed. Tapping one opens the viewer on a short drawn
+   at random from that channel.
+
+   The bubbles come from the database alone, so the rail is on screen before anything has been
+   fetched; the pip — how many shorts that channel has — arrives afterwards from the cached
+   listings, and is simply absent until it does. It scrolls away with the feed rather than
+   sticking, so reading a page still gets the whole screen. *@
+@inject IStoryService Stories
+
+@if (_stories.Count > 0)
+{
+    <div class="rail">
+        @for (var i = 0; i < _stories.Count; i++)
+        {
+            var story = _stories[i];
+            var index = i;
+
+            <button class="story" data-seen="@(story.Seen ? "1" : "0")" @key="story.ChannelId"
+                    aria-label="@($"Play a random short from @{story.Handle}")"
+                    @onclick="() => Open.InvokeAsync(index)">
+                <span class="ring">
+                    <span class="inner">
+                        @* The initial is underneath rather than an either/or, so a channel
+                           picture that 404s reveals it instead of leaving a hole. *@
+                        <span class="ava ava--letter" style="background:@ChannelTint.Gradient(story.Hue)">
+                            @Initial(story.Title)
+                        </span>
+                        @if (story.AvatarUrl is { Length: > 0 } avatar)
+                        {
+                            <img class="ava" src="@avatar" alt="" loading="lazy"
+                                 onerror="this.style.display='none'" />
+                        }
+                    </span>
+                    @if (story is { Seen: false, Available: > 0 })
+                    {
+                        <span class="pip">@(story.Available > 9 ? "9+" : story.Available.ToString())</span>
+                    }
+                </span>
+                <span class="label">@story.Handle</span>
+            </button>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>Raised with the index into <see cref="Current"/> of the bubble that was tapped.</summary>
+    [Parameter] public EventCallback<int> Open { get; set; }
+
+    /// <summary>The feed's focus, so the rail shows the same category the scroll is drawing from.</summary>
+    [Parameter] public int? CategoryId { get; set; }
+
+    private IReadOnlyList<ChannelStory> _stories = Array.Empty<ChannelStory>();
+
+    /// <summary>
+    /// What the rail is showing, in the order it's showing it — the viewer walks this list when
+    /// one channel runs out and the next takes over.
+    /// </summary>
+    public IReadOnlyList<ChannelStory> Current => _stories;
+
+    protected override Task OnInitializedAsync() => RefreshAsync();
+
+    /// <summary>
+    /// Re-read the rail. Called on load, and again when the viewer closes — a channel that's just
+    /// been through needs its ring to go quiet.
+    /// </summary>
+    public async Task RefreshAsync()
+    {
+        var generation = ++_generation;
+
+        _stories = await Stories.GetStoriesAsync(CategoryId);
+        StateHasChanged();
+        if (_stories.Count == 0) return;
+
+        // Counting means reading each channel's cached listing, which on a cold start means
+        // fetching it. The rail is already up by then; the pips just appear.
+        var counted = await Stories.CountAvailableAsync(_stories);
+        if (generation != _generation) return;   // a newer refresh already won
+
+        _stories = counted;
+        StateHasChanged();
+    }
+
+    private int _generation;
+
+    private static string Initial(string title) =>
+        string.IsNullOrWhiteSpace(title) ? "?" : title.Trim()[..1].ToUpperInvariant();
+}

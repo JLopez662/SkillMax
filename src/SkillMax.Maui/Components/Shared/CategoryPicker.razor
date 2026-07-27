@@ -1,0 +1,133 @@
+@* Files one thing under one category. The same sheet whether the thing is a book, a channel or a
+   search — the caller says what it's called and what it's currently filed as, and gets the choice
+   back. Creating a category from in here is deliberate: filing something is exactly when you
+   notice the category you want doesn't exist yet. *@
+@inject ICategoryService Categories
+
+@if (_open)
+{
+    <div class="scrim" @onclick="Cancel">
+        <div class="sheet" @onclick:stopPropagation="true">
+            <h3>Category</h3>
+            <p class="sheet__sub">Filing &ldquo;@_label&rdquo;. One category apiece — it decides which chip it wears.</p>
+
+            @foreach (var c in _categories)
+            {
+                <button class="opt @(_picked == c.Id ? "on" : "")" style="--c:@c.ColorHex"
+                        @onclick="() => _picked = c.Id">
+                    <span class="dot"></span>
+                    <span class="nm">@c.Name</span>
+                    @if (_picked == c.Id)
+                    {
+                        <span class="tick"><Icon Name="check" Size="16" /></span>
+                    }
+                </button>
+            }
+
+            <button class="opt opt--none @(_picked is null ? "on" : "")" @onclick="() => _picked = null">
+                <span class="dot"></span>
+                <span class="nm">None</span>
+                @if (_picked is null)
+                {
+                    <span class="tick"><Icon Name="check" Size="16" /></span>
+                }
+            </button>
+
+            @if (_creating)
+            {
+                <div class="mk">
+                    <input type="text" maxlength="60" placeholder="Category name" autocomplete="off"
+                           @bind="_newName" @bind:event="oninput" @onkeydown="OnKeyDown" />
+                    <button class="rnd rnd--on" aria-label="Create category"
+                            disabled="@(string.IsNullOrWhiteSpace(_newName) || _busy)" @onclick="CreateAsync">
+                        <Icon Name="check" Size="16" />
+                    </button>
+                </div>
+            }
+            else
+            {
+                <button class="sheet__new" @onclick="() => _creating = true">
+                    <Icon Name="plus" Size="15" /> New category
+                </button>
+            }
+
+            <div class="sheet__acts">
+                <button class="pbtn ghost" disabled="@_busy" @onclick="Cancel">Cancel</button>
+                <button class="pbtn go" disabled="@_busy" @onclick="SaveAsync">@(_busy ? "Saving…" : "Save")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>Raised with the chosen category (null = Uncategorised) once Save is pressed.</summary>
+    [Parameter] public EventCallback<int?> OnPicked { get; set; }
+
+    private bool _open, _creating, _busy;
+    private string _label = "";
+    private int? _picked;
+    private string _newName = "";
+    private IReadOnlyList<Category> _categories = Array.Empty<Category>();
+
+    /// <summary>Opens the sheet for one thing. The caller keeps hold of what it was.</summary>
+    public async Task OpenAsync(string label, int? current)
+    {
+        _label = label;
+        _picked = current;
+        _newName = "";
+        _creating = false;
+        _categories = await Categories.GetCategoriesAsync();
+        _open = true;
+        StateHasChanged();
+    }
+
+    private void Cancel()
+    {
+        if (_busy) return;
+        _open = false;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await CreateAsync();
+    }
+
+    /// <summary>
+    /// A category made here is selected straight away — you opened this to file something, so
+    /// making the category and then having to find it would be a step for nothing.
+    /// </summary>
+    private async Task CreateAsync()
+    {
+        if (_busy || string.IsNullOrWhiteSpace(_newName)) return;
+
+        _busy = true;
+        try
+        {
+            var created = await Categories.AddAsync(_newName);
+            _categories = await Categories.GetCategoriesAsync();
+            _picked = created.Id;
+            _newName = "";
+            _creating = false;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_busy) return;
+
+        _busy = true;
+        try
+        {
+            await OnPicked.InvokeAsync(_picked);
+            _open = false;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

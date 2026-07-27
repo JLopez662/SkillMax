@@ -1,0 +1,205 @@
+@page "/"
+@inject IFeedService FeedService
+@inject IShortsService Shorts
+@inject ShortsOptions ShortsOptions
+@inject IBookService Books
+@inject ICategoryService CategoryService
+@inject NavigationManager Nav
+
+<div class="topbar">
+    <div class="logo">Skill<b>Max</b></div>
+    <div class="topbar-r">
+        @* What the scroll is drawing from. Everything, unless you've said otherwise. *@
+        @if (_categories.Count > 0)
+        {
+            <button class="focus" @onclick="CycleFocus"
+                    aria-label="@($"Feed focus: {FocusName}. Tap to change.")">
+                @if (FocusCategory is { } f)
+                {
+                    <span class="dot" style="--c:@f.ColorHex"></span>
+                }
+                @FocusName
+                <Icon Name="chevron-down" Size="14" />
+            </button>
+        }
+        <button class="ic" aria-label="Shuffle" @onclick="Reshuffle"><Icon Name="shuffle" /></button>
+        <span class="streak"><span class="fl" style="color:#f2a25c;display:inline-flex"><Icon Name="flame" /></span>@_momentum</span>
+    </div>
+</div>
+
+@* Above the feed, and scrolling away with it: one bubble per followed channel, each opening on a
+   short drawn at random from that channel. Outside the branches below because a followed channel
+   is worth watching whether or not there's a book to read yet. *@
+<StoryRail @ref="_rail" Open="OpenStoryAsync" CategoryId="_focus" />
+
+@if (_items.Count == 0 && _loading)
+{
+    <div class="muted-center">Curating your feed…</div>
+}
+else if (_items.Count == 0 && FocusCategory is { } focused)
+{
+    @* A focused feed with nothing in it isn't an empty library — telling someone with five books
+       to import a PDF would be wrong advice for the situation they're actually in. *@
+    <div class="empty">
+        <div class="empty__ic"><Icon Name="tag" Size="42" /></div>
+        <h2>Nothing in @focused.Name yet</h2>
+        <p>File a book or a source under @focused.Name, or switch the focus back to Everything.</p>
+        <button class="cta" @onclick="ClearFocus">Show everything</button>
+    </div>
+}
+else if (_items.Count == 0)
+{
+    <div class="empty">
+        <div class="empty__ic"><Icon Name="book-open" Size="42" /></div>
+        <h2>Your feed is empty</h2>
+        <p>Import a study PDF and its pages become your feed — scroll to level up instead of doomscroll.</p>
+        <button class="cta" @onclick='() => Nav.NavigateTo("/import")'>Import a PDF</button>
+    </div>
+}
+else
+{
+    <div class="feed">
+        @for (var i = 0; i < _items.Count; i++)
+        {
+            @if (_items[i] is FeedItem.Page page)
+            {
+                <FeedPost Card="page.Card" @key="@($"p{i}")" />
+            }
+            else if (_items[i] is FeedItem.Short shrt)
+            {
+                <ShortPost Card="shrt.Card" @key="@($"s{i}")"
+                           Playing="@(_playing == shrt.Card.VideoId)"
+                           OnPlay="OnShortPlay" />
+            }
+        }
+        <button class="more" @onclick="LoadMore" disabled="@_loading">
+            @(_loading ? "Loading…" : "Shuffle more")
+        </button>
+    </div>
+}
+
+<StoryViewer @ref="_viewer" OnClosed="OnStoryClosedAsync" />
+
+@code {
+    private const int PagesPerBatch = 6;
+
+    private readonly List<FeedItem> _items = new();
+    private bool _loading;
+    private int _momentum;
+
+    private StoryRail? _rail;
+    private StoryViewer? _viewer;
+
+    /// <summary>The one short allowed to hold a player, so two never play over each other.</summary>
+    private string? _playing;
+
+    private IReadOnlyList<Category> _categories = Array.Empty<Category>();
+    private int? _focus;
+
+    private Category? FocusCategory =>
+        _focus is { } id ? _categories.FirstOrDefault(c => c.Id == id) : null;
+
+    private string FocusName => FocusCategory?.Name ?? "Everything";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Read before the first draw: the focus decides what the draw is allowed to pull from.
+        _categories = await CategoryService.GetCategoriesAsync();
+        _focus = await CategoryService.GetFocusAsync();
+
+        await LoadMore();
+        _momentum = await Books.GetPagesSeenTotalAsync();
+    }
+
+    /// <summary>
+    /// Cycles Everything → each category → Everything. A sheet would be better with a dozen
+    /// categories; with the handful this app is built around, one tap beats two.
+    /// </summary>
+    private async Task CycleFocus()
+    {
+        var ids = new List<int?> { null };
+        ids.AddRange(_categories.Select(c => (int?)c.Id));
+
+        var next = ids[(ids.IndexOf(_focus) + 1) % ids.Count];
+        await ApplyFocus(next);
+    }
+
+    private Task ClearFocus() => ApplyFocus(null);
+
+    private async Task ApplyFocus(int? categoryId)
+    {
+        _focus = categoryId;
+        await CategoryService.SetFocusAsync(categoryId);
+
+        // The rail doesn't re-read on a parameter change; it's told to, so both halves of the
+        // screen turn over together.
+        if (_rail is not null) await _rail.RefreshAsync();
+        await Reshuffle();
+    }
+
+    private async Task LoadMore()
+    {
+        if (_loading) return;
+        _loading = true;
+        StateHasChanged();
+
+        var pages = await FeedService.GetFeedAsync(PagesPerBatch, _focus);
+
+        // A followed channel is a bonus, not a dependency: offline, or a channel that can't be
+        // reached, just means this batch is pages only.
+        var every = Math.Max(1, ShortsOptions.EveryNPosts);
+        var shorts = await Shorts.GetShortsAsync(PagesPerBatch / every, _focus);
+
+        _items.AddRange(Interleave(pages, shorts, every));
+
+        _loading = false;
+        _momentum = await Books.GetPagesSeenTotalAsync();
+        StateHasChanged();
+    }
+
+    private async Task Reshuffle()
+    {
+        _items.Clear();
+        _playing = null;
+        await LoadMore();
+    }
+
+    private void OnShortPlay(string videoId) => _playing = videoId;
+
+    private async Task OpenStoryAsync(int index)
+    {
+        if (_rail is null || _viewer is null) return;
+
+        // The viewer covers the feed but doesn't unmount it, so a short playing underneath would
+        // keep talking over the story. Dropping it re-renders that post without its player.
+        _playing = null;
+
+        await _viewer.OpenAsync(_rail.Current, index);
+    }
+
+    /// <summary>A channel that's just been through needs its ring to go quiet.</summary>
+    private Task OnStoryClosedAsync() => _rail?.RefreshAsync() ?? Task.CompletedTask;
+
+    /// <summary>
+    /// Drops a short in after every <paramref name="every"/> pages. Shorts left over — a batch
+    /// with fewer pages than expected — ride at the end rather than being thrown away.
+    /// </summary>
+    private static List<FeedItem> Interleave(
+        IReadOnlyList<FeedCard> pages, IReadOnlyList<ShortCard> shorts, int every)
+    {
+        var items = new List<FeedItem>(pages.Count + shorts.Count);
+        var next = 0;
+
+        for (var i = 0; i < pages.Count; i++)
+        {
+            items.Add(new FeedItem.Page(pages[i]));
+            if ((i + 1) % every == 0 && next < shorts.Count)
+                items.Add(new FeedItem.Short(shorts[next++]));
+        }
+
+        while (next < shorts.Count)
+            items.Add(new FeedItem.Short(shorts[next++]));
+
+        return items;
+    }
+}

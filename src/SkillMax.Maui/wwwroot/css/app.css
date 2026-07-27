@@ -1,0 +1,37 @@
+/* Reset + base. Design tokens live in theme.css (loaded after this). */
+* { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+    font-family: var(--font, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif);
+    background: var(--bg, #000);
+    color: var(--text, #fff);
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6, p { margin: 0; }
+button { font-family: inherit; color: inherit; }
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; display: block; }
+:focus-visible { outline: 2px solid var(--ig-blue, #0095f6); outline-offset: 2px; }
+
+/* Notch / status-bar safe area at the very top. */
+.status-bar-safe-area { height: env(safe-area-inset-top, 0); background: var(--bg); }
+
+#app { min-height: 100dvh; }
+
+/* Default icon size; specific contexts override in theme.css (global so they reach
+   the <Icon> child component, which carries its own CSS-isolation scope). */
+.sm-ico { display: block; width: 22px; height: 22px; }
+
+/* Blazor error toast */
+#blazor-error-ui {
+    background: #ffefef; color: #a00000; bottom: 0; display: none;
+    left: 0; padding: 0.7rem 1.2rem; position: fixed; width: 100%; z-index: 1000;
+    box-shadow: 0 -1px 3px rgba(0,0,0,.25); font-size: 13px;
+}
+#blazor-error-ui .dismiss { cursor: pointer; position: absolute; right: 1rem; top: 0.5rem; }

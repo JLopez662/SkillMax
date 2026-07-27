@@ -1,0 +1,92 @@
+.shead {
+    display: flex; align-items: center; gap: 10px;
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 10px 4px;
+}
+.shead .t { font-size: 19px; font-weight: 800; }
+
+.snote { padding: 4px 18px 12px; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.snote--empty { padding-top: 10px; color: var(--faint); }
+
+.rnd {
+    width: 38px; height: 38px; flex: none; padding: 0; display: grid; place-items: center;
+    border: 1px solid var(--line); border-radius: 50%; cursor: pointer;
+    background: var(--surface); color: var(--text);
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.rnd--sm { width: 34px; height: 34px; }
+.rnd--on { background: var(--text); color: var(--bg); border-color: transparent; }
+.rnd--danger { background: rgba(255, 48, 64, .12); border-color: transparent; color: var(--ig-red); }
+.rnd:disabled { opacity: .45; cursor: default; }
+
+.cats { display: flex; flex-direction: column; gap: 8px; padding: 4px 13px 8px; }
+
+.cat {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 12px; border-radius: 18px; background: var(--surface);
+}
+.cat__swatch {
+    width: 34px; height: 34px; border-radius: 50%; flex: none; background: var(--c);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18);
+}
+/* A category that doesn't exist yet has no colour to show — the service picks one on save. */
+.cat__swatch--new { background: none; box-shadow: inset 0 0 0 1.5px var(--line); }
+
+.cat__meta { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.cat__n { font-size: 14.5px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat__c {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em;
+    color: var(--faint); font-variant-numeric: tabular-nums;
+}
+
+.cat__acts { display: flex; gap: 6px; flex: none; }
+
+.cat__edit { flex: 1; min-width: 0; display: flex; gap: 8px; align-items: center; }
+.cat__edit input {
+    flex: 1; min-width: 0; padding: 9px 12px;
+    background: var(--field); color: var(--text);
+    border: 1px solid var(--line); border-radius: 12px;
+    font-family: var(--font); font-size: 14px;
+}
+.cat__edit input::placeholder { color: var(--faint); }
+
+.addcat {
+    display: flex; align-items: center; justify-content: center; gap: 9px;
+    margin: 4px 13px 8px; padding: 14px; border-radius: 18px; cursor: pointer;
+    border: 1.5px dashed var(--line); background: none; color: var(--muted);
+    font-family: var(--font); font-size: 13.5px; font-weight: 650;
+    width: calc(100% - 26px);
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+
+/* ---- Delete confirmation ---- */
+
+.scrim {
+    position: fixed; inset: 0; z-index: 50; padding: 32px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, .62); animation: cat-scrim .18s ease both;
+}
+@keyframes cat-scrim { from { opacity: 0; } to { opacity: 1; } }
+
+.dialog {
+    width: 100%; max-width: 300px; padding: 22px 20px 14px;
+    background: var(--elev); border: 1px solid var(--line); border-radius: 22px;
+    text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px;
+    animation: cat-in .2s cubic-bezier(.2, .8, .2, 1) both;
+}
+@keyframes cat-in { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
+
+.dialog__ic { color: var(--ig-red); }
+.dialog h3 { font-size: 16px; font-weight: 800; }
+.dialog p { font-size: 13px; color: var(--muted); line-height: 1.45; }
+
+.dialog .btn {
+    width: 100%; margin-top: 6px; padding: 12px; border-radius: 999px; border: 0;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.dialog .btn:disabled { opacity: .6; cursor: default; }
+.dialog .btn.danger { background: var(--ig-red); color: #fff; }
+.dialog .btn.ghost { background: var(--surface); color: var(--text); }
+
+@media (prefers-reduced-motion: reduce) {
+    .scrim, .dialog { animation: none; }
+}

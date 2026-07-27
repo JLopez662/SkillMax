@@ -1,0 +1,415 @@
+@* A book's contents. Opened by tapping its tile in the Library; every row lands in the reader on
+   that chapter. The header carries on the tile's own gradient so the tap reads as having opened the
+   book you pressed. *@
+@page "/book/{BookId:int}"
+@inject IBookService Books
+@inject IChapterService Chapters
+@inject IUnderstoodService Understood
+@inject IBookMetadataService Metadata
+@inject NavigationManager Nav
+
+<div class="hero">
+    <div class="hero__art" style="background:@Grad"></div>
+    <div class="hero__bar">
+        <button class="hero__ic" @onclick='() => Nav.NavigateTo("/library")' aria-label="Back to Library">
+            <Icon Name="chevron-left" Size="21" />
+        </button>
+        @if (_book is not null)
+        {
+            <button class="hero__ic" @onclick="OpenRename" aria-label="Rename this book">
+                <Icon Name="pencil" Size="18" />
+            </button>
+        }
+    </div>
+    <div class="hero__txt">
+        <div class="hero__kicker">@Kicker</div>
+        <h1>@(_book?.Title ?? "…")</h1>
+        @if (!string.IsNullOrWhiteSpace(_book?.Author))
+        {
+            <p class="hero__by">@_book!.Author</p>
+        }
+    </div>
+    <div class="hero__prog">
+        <div class="hero__track"><i style="width:@(Pct)%"></i></div>
+        <div class="hero__nums">
+            <span>@Marked</span>
+            <span>@Pct%</span>
+        </div>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="muted-center">Reading the contents…</div>
+}
+else if (_book is null)
+{
+    <div class="muted-center">That book isn't in your library any more.</div>
+}
+else if (_chapters.Count == 0)
+{
+    @* GetChaptersAsync lists only what the PDF's own outline states. Nothing to divide the book by,
+       so don't invent a list — offer the one honest way in. *@
+    <div class="bare">
+        <div class="bare__ic"><Icon Name="book-open" Size="40" /></div>
+        <h2>No chapter list</h2>
+        <p>This PDF was published without an outline, so there's nothing reliable to divide it by.</p>
+        <button class="go__btn" @onclick="() => Open(1)">
+            <Icon Name="play" Size="15" Fill="currentColor" /> Read from page 1
+        </button>
+        <p class="bare__fine">Your feed still serves its pages</p>
+    </div>
+}
+else
+{
+    <div class="go">
+        <button class="go__btn" @onclick="() => Open(_resume!.Chapter.StartPage)">
+            <Icon Name="play" Size="15" Fill="currentColor" />
+            <span class="lbl">@ResumeLabel</span>
+        </button>
+        <p class="go__note">@ResumeNote</p>
+    </div>
+
+    <div class="count">
+        <span>Contents</span>
+        <span>@CountLabel</span>
+    </div>
+
+    @if (_chapters.Count >= FilterFrom)
+    {
+        <div class="sticky">
+            <label class="find">
+                <Icon Name="search" Size="15" />
+                <input type="search" placeholder="Find a chapter" aria-label="Find a chapter"
+                       autocomplete="off" autocapitalize="none" spellcheck="false"
+                       @bind="Filter" @bind:event="oninput" />
+            </label>
+        </div>
+    }
+
+    <div class="chs">
+        @foreach (var c in _visible)
+        {
+            var pages = c.Chapter.PageCount;
+            var done = _done[c.Chapter.StartPage];
+            var full = done >= pages;
+            var open = _open.Contains(c.Chapter.StartPage);
+
+            <div class="ch @(full ? "ch--done" : "") @(open ? "ch--open" : "")">
+                <div class="ch__row">
+                    <button class="ch__open" @onclick="() => Open(c.Chapter.StartPage)">
+                        <span class="ch__ring" style="--p:@Ring(done, pages)">
+                            <svg viewBox="0 0 36 36" aria-hidden="true">
+                                <circle class="track" cx="18" cy="18" r="16" />
+                                <circle class="val" cx="18" cy="18" r="16" />
+                            </svg>
+                            @if (full)
+                            {
+                                <span class="ch__check"><Icon Name="check" Size="15" StrokeWidth="2.4" /></span>
+                            }
+                            else
+                            {
+                                <span class="ch__n">@_ordinal[c.Chapter.StartPage]</span>
+                            }
+                        </span>
+                        <span class="ch__meta">
+                            <span class="ch__t">@c.Chapter.ShortTitle</span>
+                            <span class="ch__sub">@Sub(c.Chapter, done, full)</span>
+                        </span>
+                    </button>
+
+                    @if (c.Sections.Count > 0)
+                    {
+                        <button class="ch__end ch__end--disc" @onclick="() => Toggle(c)"
+                                aria-expanded="@(open ? "true" : "false")"
+                                aria-label="@($"Sections of {c.Chapter.ShortTitle}")">
+                            <Icon Name="chevron-down" Size="18" />
+                        </button>
+                    }
+                    else
+                    {
+                        <span class="ch__end" aria-hidden="true"><Icon Name="chevron-right" Size="17" /></span>
+                    }
+                </div>
+
+                @if (c.Sections.Count > 0)
+                {
+                    <div class="secs">
+                        @foreach (var s in c.Sections)
+                        {
+                            <button class="sec" @onclick="() => Open(s.Page)">
+                                <span class="sec__t">@s.Title</span>
+                                <span class="sec__p">p. @s.Page</span>
+                                <Icon Name="chevron-right" Size="14" />
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    @if (_visible.Count == 0)
+    {
+        <p class="none">No chapter matches that.</p>
+    }
+}
+
+@if (_renaming)
+{
+    <div class="scrim" @onclick="CloseRename">
+        <div class="sheet" @onclick:stopPropagation="true">
+            <h3>Rename book</h3>
+            <p class="sheet__sub">Import names a book after its file. Call it what it's actually called.</p>
+
+            <label class="fld">
+                <span>Title</span>
+                <input type="text" maxlength="300" autocomplete="off" spellcheck="false"
+                       @bind="_title" @bind:event="oninput" />
+            </label>
+
+            <label class="fld">
+                <span>Author</span>
+                <input type="text" maxlength="200" placeholder="Optional" autocomplete="off" spellcheck="false"
+                       @bind="_author" @bind:event="oninput" />
+            </label>
+
+            @* Fills the fields rather than saving: the PDF's metadata is right often enough to
+               offer and wrong often enough that nothing should be written without a look. *@
+            <button class="sheet__fill" disabled="@_reading" @onclick="FillFromPdf">
+                <Icon Name="sparkles" Size="15" />
+                @(_reading ? "Reading the PDF…" : "Use the PDF's own details")
+            </button>
+
+            <div class="sheet__acts">
+                <button class="pbtn ghost" disabled="@_saving" @onclick="CloseRename">Cancel</button>
+                <button class="pbtn go" disabled="@(_saving || string.IsNullOrWhiteSpace(_title))"
+                        @onclick="SaveRename">
+                    @(_saving ? "Saving…" : "Save")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int BookId { get; set; }
+
+    /// <summary>Set by the Library's rename button, so the sheet is open on arrival.</summary>
+    [SupplyParameterFromQuery(Name = "rename")] public string? RenameFlag { get; set; }
+
+    /// <summary>Below this many chapters the list fits the thumb and a filter is only clutter.</summary>
+    private const int FilterFrom = 12;
+
+    private Book? _book;
+    private IReadOnlyList<BookChapter> _chapters = Array.Empty<BookChapter>();
+    private HashSet<int> _understood = new();
+
+    // Keyed by chapter start page, which GetChaptersAsync guarantees is unique.
+    private Dictionary<int, int> _done = new();
+    private Dictionary<int, int> _ordinal = new();
+    private readonly HashSet<int> _open = new();
+
+    private List<BookChapter> _visible = new();
+    private BookChapter? _resume;
+    private string _filter = "";
+    private bool _loading = true;
+
+    private bool _renaming, _reading, _saving;
+    private string _title = "";
+    private string _author = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _open.Clear();
+        _filter = "";
+
+        _book = await Books.GetBookAsync(BookId);
+        if (_book is not null)
+        {
+            _chapters = await Chapters.GetChaptersAsync(BookId, _book.FilePath);
+            _understood = (await Understood.GetPagesAsync(BookId)).ToHashSet();
+            Measure();
+        }
+
+        _loading = false;
+        if (_book is not null && RenameFlag == "1") OpenRename();
+    }
+
+    // ---------------------------------------------------------------- rename
+
+    private void OpenRename()
+    {
+        if (_book is null) return;
+        _title = _book.Title;
+        _author = _book.Author ?? "";
+        _renaming = true;
+    }
+
+    private void CloseRename()
+    {
+        if (_saving) return;
+        _renaming = false;
+    }
+
+    private async Task FillFromPdf()
+    {
+        if (_book is null || _reading) return;
+
+        _reading = true;
+        try
+        {
+            var suggested = await Metadata.SuggestAsync(_book.FilePath, _book.Title);
+            _title = suggested.Title;
+            _author = suggested.Author ?? _author;
+        }
+        finally
+        {
+            _reading = false;
+        }
+    }
+
+    private async Task SaveRename()
+    {
+        if (_book is null || _saving || string.IsNullOrWhiteSpace(_title)) return;
+
+        _saving = true;
+        try
+        {
+            await Books.RenameAsync(BookId, _title, _author);
+            _book = await Books.GetBookAsync(BookId);
+        }
+        finally
+        {
+            _saving = false;
+            _renaming = false;
+        }
+    }
+
+    /// <summary>
+    /// Counts each chapter's marked pages once, rather than on every render: a 450-page book with
+    /// 48 chapters would otherwise re-walk the whole page range several times per frame.
+    /// </summary>
+    private void Measure()
+    {
+        _done = new Dictionary<int, int>(_chapters.Count);
+        _ordinal = new Dictionary<int, int>(_chapters.Count);
+
+        for (var i = 0; i < _chapters.Count; i++)
+        {
+            var c = _chapters[i].Chapter;
+
+            var n = 0;
+            for (var p = c.StartIndex; p <= c.EndIndex; p++)
+            {
+                if (_understood.Contains(p)) n++;
+            }
+
+            _done[c.StartPage] = n;
+            _ordinal[c.StartPage] = Ordinal(c, i);
+        }
+
+        // The first chapter with pages left, or the first one when the book is finished.
+        _resume = _chapters.FirstOrDefault(c => _done[c.Chapter.StartPage] < c.Chapter.PageCount)
+                  ?? _chapters.FirstOrDefault();
+
+        Refilter();
+    }
+
+    private void Refilter() =>
+        _visible = string.IsNullOrWhiteSpace(_filter)
+            ? _chapters.ToList()
+            : _chapters.Where(c => c.Chapter.Title.Contains(_filter.Trim(), StringComparison.OrdinalIgnoreCase))
+                       .ToList();
+
+    private string Filter
+    {
+        get => _filter;
+        set
+        {
+            _filter = value;
+            Refilter();
+        }
+    }
+
+    // ---------------------------------------------------------------- header
+
+    private string Grad => $"linear-gradient(150deg, {_book?.ColorHex ?? "#4f5bd5"}, #0d0d14)";
+
+    private string Kicker => _book is null
+        ? ""
+        : _chapters.Count > 0
+            ? $"{_chapters.Count} chapters · {_book.PageCount} pages"
+            : $"{_book.PageCount} pages";
+
+    /// <summary>
+    /// Understood pages, not pages served: the heart is the only per-page mark the app keeps, so
+    /// it's the only figure a chapter can honestly show. Spelled out in words to keep it apart from
+    /// the Library tile's %, which counts what the feed has put in front of you.
+    /// </summary>
+    private string Marked => _understood.Count == 0
+        ? "Nothing marked yet"
+        : $"{_understood.Count} of {_book?.PageCount ?? 0} pages understood";
+
+    private int Pct => _book is null || _book.PageCount <= 0
+        ? 0
+        : (int)Math.Round(100.0 * Math.Min(_understood.Count, _book.PageCount) / _book.PageCount);
+
+    // ---------------------------------------------------------------- resume
+
+    private bool Finished => _chapters.Count > 0 &&
+                             _chapters.All(c => _done[c.Chapter.StartPage] >= c.Chapter.PageCount);
+
+    private string ResumeLabel
+    {
+        get
+        {
+            if (_understood.Count == 0) return "Start reading";
+            if (Finished) return "Read it again";
+            var ch = _resume!.Chapter;
+            return $"Continue · {ch.Label ?? ch.ShortTitle}";
+        }
+    }
+
+    private string ResumeNote => _understood.Count == 0
+        ? "Opens at the first chapter."
+        : Finished
+            ? "Every chapter is marked understood."
+            : "Picks up at the first chapter you haven't finished.";
+
+    // ---------------------------------------------------------------- rows
+
+    private string CountLabel => string.IsNullOrWhiteSpace(_filter)
+        ? $"{_chapters.Count} chapters"
+        : $"{_visible.Count} of {_chapters.Count}";
+
+    /// <summary>The chapter's own number where its title carries one, else its place in the list.</summary>
+    private static int Ordinal(ChapterRef c, int index)
+    {
+        var digits = new string((c.Label ?? "").Where(char.IsDigit).ToArray());
+        return digits.Length is > 0 and <= 3 && int.TryParse(digits, out var n) ? n : index + 1;
+    }
+
+    /// <summary>Ring fill 0–1. Formatted invariantly: a comma decimal separator would kill the CSS.</summary>
+    private static string Ring(int done, int pages) => pages <= 0
+        ? "0"
+        : (Math.Min(done, pages) / (double)pages)
+            .ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string Sub(ChapterRef c, int done, bool full)
+    {
+        var range = $"p. {c.StartPage}–{c.EndPage}";
+        if (full) return $"{range} · all {c.PageCount} understood";
+        return done > 0
+            ? $"{range} · {done} of {c.PageCount} understood"
+            : $"{range} · {c.PageCount} pages";
+    }
+
+    private void Toggle(BookChapter c)
+    {
+        if (!_open.Add(c.Chapter.StartPage)) _open.Remove(c.Chapter.StartPage);
+    }
+
+    private void Open(int page) => Nav.NavigateTo($"/read/{BookId}/{page}?back=book");
+}

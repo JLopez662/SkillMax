@@ -1,0 +1,228 @@
+@* Manage the shelf labels. Renaming happens in place rather than in a dialog — you're looking at
+   the list of names, so the name is the thing to edit. *@
+@page "/settings/categories"
+@* Injected as CategoryService, not Categories: the page's own class is Categories, and a member
+   can't share its enclosing type's name. *@
+@inject ICategoryService CategoryService
+@inject NavigationManager Nav
+
+<div class="shead">
+    <button class="rnd" @onclick='() => Nav.NavigateTo("/profile")' aria-label="Back to profile">
+        <Icon Name="chevron-left" Size="19" />
+    </button>
+    <span class="t">Categories</span>
+</div>
+
+<p class="snote">
+    Group your books and your YouTube sources however you like. Deleting a category never deletes
+    what's in it — those go back to Uncategorised.
+</p>
+
+@if (_categories is null)
+{
+    <div class="muted-center">Loading…</div>
+}
+else
+{
+    <div class="cats">
+        @foreach (var c in _categories)
+        {
+            <div class="cat" style="--c:@c.ColorHex">
+                <span class="cat__swatch"></span>
+
+                @if (_renaming == c.Id)
+                {
+                    <span class="cat__edit">
+                        <input type="text" maxlength="60" aria-label="Category name" autocomplete="off"
+                               @bind="_draft" @bind:event="oninput" @onkeydown="OnKeyDown" />
+                        <button class="rnd rnd--sm rnd--on" aria-label="Save name"
+                                disabled="@(string.IsNullOrWhiteSpace(_draft) || _busy)" @onclick="SaveRename">
+                            <Icon Name="check" Size="16" />
+                        </button>
+                    </span>
+                }
+                else
+                {
+                    <span class="cat__meta">
+                        <span class="cat__n">@c.Name</span>
+                        <span class="cat__c">@Usage(c.Id)</span>
+                    </span>
+                    <span class="cat__acts">
+                        <button class="rnd rnd--sm" aria-label="@($"Rename {c.Name}")" @onclick="() => StartRename(c)">
+                            <Icon Name="pencil" Size="15" />
+                        </button>
+                        <button class="rnd rnd--sm rnd--danger" aria-label="@($"Delete {c.Name}")"
+                                @onclick="() => _pending = c">
+                            <Icon Name="trash" Size="15" />
+                        </button>
+                    </span>
+                }
+            </div>
+        }
+    </div>
+
+    @if (_adding)
+    {
+        <div class="cats">
+            <div class="cat">
+                <span class="cat__swatch cat__swatch--new"></span>
+                <span class="cat__edit">
+                    <input type="text" maxlength="60" placeholder="Category name" aria-label="New category name"
+                           autocomplete="off" @bind="_draft" @bind:event="oninput" @onkeydown="OnKeyDown" />
+                    <button class="rnd rnd--sm rnd--on" aria-label="Create category"
+                            disabled="@(string.IsNullOrWhiteSpace(_draft) || _busy)" @onclick="SaveNew">
+                        <Icon Name="check" Size="16" />
+                    </button>
+                </span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <button class="addcat" @onclick="StartAdd">
+            <Icon Name="plus" Size="18" /> New category
+        </button>
+    }
+
+    @if (_categories.Count == 0 && !_adding)
+    {
+        <p class="snote snote--empty">
+            Nothing yet. Coding, AI, Social — whatever you'd actually sort your shelf by.
+        </p>
+    }
+}
+
+@if (_pending is not null)
+{
+    <div class="scrim" @onclick="CancelDelete">
+        <div class="dialog" @onclick:stopPropagation="true">
+            <div class="dialog__ic"><Icon Name="trash" Size="22" /></div>
+            <h3>Delete &ldquo;@_pending.Name&rdquo;?</h3>
+            <p>@DeleteBlurb(_pending.Id)</p>
+            <button class="btn danger" disabled="@_busy" @onclick="ConfirmDelete">
+                @(_busy ? "Deleting…" : "Delete")
+            </button>
+            <button class="btn ghost" disabled="@_busy" @onclick="CancelDelete">Cancel</button>
+        </div>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<Category>? _categories;
+    private IReadOnlyDictionary<int, CategoryUse> _usage = new Dictionary<int, CategoryUse>();
+
+    private int? _renaming;
+    private bool _adding, _busy;
+    private string _draft = "";
+    private Category? _pending;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _categories = await CategoryService.GetCategoriesAsync();
+        _usage = await CategoryService.GetUsageAsync();
+    }
+
+    private string Usage(int id)
+    {
+        var use = _usage.GetValueOrDefault(id) ?? new CategoryUse(0, 0);
+        if (use.Books == 0 && use.Sources == 0) return "Empty";
+        return $"{Count(use.Books, "book")} · {Count(use.Sources, "source")}";
+    }
+
+    private static string Count(int n, string noun) => $"{n} {noun}{(n == 1 ? "" : "s")}";
+
+    private string DeleteBlurb(int id)
+    {
+        var use = _usage.GetValueOrDefault(id) ?? new CategoryUse(0, 0);
+        var total = use.Books + use.Sources;
+
+        return total == 0
+            ? "Nothing is filed under it, so nothing changes anywhere else."
+            : $"{Count(total, "item")} go back to Uncategorised. Nothing is deleted but the label itself.";
+    }
+
+    // ---------------------------------------------------------------- rename
+
+    private void StartRename(Category category)
+    {
+        _adding = false;
+        _renaming = category.Id;
+        _draft = category.Name;
+    }
+
+    private void StartAdd()
+    {
+        _renaming = null;
+        _adding = true;
+        _draft = "";
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+        if (_adding) await SaveNew();
+        else await SaveRename();
+    }
+
+    private async Task SaveRename()
+    {
+        if (_busy || _renaming is not { } id || string.IsNullOrWhiteSpace(_draft)) return;
+
+        _busy = true;
+        try
+        {
+            await CategoryService.RenameAsync(id, _draft);
+            await LoadAsync();
+            _renaming = null;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task SaveNew()
+    {
+        if (_busy || string.IsNullOrWhiteSpace(_draft)) return;
+
+        _busy = true;
+        try
+        {
+            await CategoryService.AddAsync(_draft);
+            await LoadAsync();
+            _adding = false;
+            _draft = "";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // ---------------------------------------------------------------- delete
+
+    private void CancelDelete()
+    {
+        if (_busy) return;
+        _pending = null;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (_pending is null || _busy) return;
+
+        _busy = true;
+        try
+        {
+            await CategoryService.DeleteAsync(_pending.Id);
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+            _pending = null;
+        }
+    }
+}

@@ -1,0 +1,266 @@
+/* ============================================================
+   Round, clear controls. One shape — a 38px circle with a
+   translucent fill and a hairline — for every action on this
+   screen. The variants only change what it sits on.
+   ============================================================ */
+
+/* The pill group below already separates the header; a rule as well reads as a seam. */
+.topbar { border-bottom: 0; }
+
+.tb-actions { display: flex; align-items: center; gap: 8px; }
+
+.rnd {
+    width: 38px; height: 38px; flex: none; padding: 0;
+    display: grid; place-items: center;
+    border: 1px solid var(--line); border-radius: 50%; cursor: pointer;
+    background: var(--surface); color: var(--text);
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    transition: background .16s, color .16s;
+}
+.rnd:hover { background: var(--surface-2); }
+
+/* Active: the control inverts rather than colouring, so it reads in both themes. */
+.rnd--on { background: var(--text); color: var(--bg); border-color: transparent; }
+
+/* Over cover art: frosted, so it picks up what's behind instead of punching a hole. */
+.rnd--art {
+    background: rgba(0, 0, 0, .42); border-color: rgba(255, 255, 255, .22); color: #fff;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+/* Beats .rnd--art on specificity, so an active control over art still reads as active. */
+.rnd--art.rnd--on { background: #fff; color: #111; border-color: transparent; }
+.rnd--danger { background: rgba(255, 48, 64, .9); border-color: transparent; color: #fff; }
+.rnd--sm { width: 34px; height: 34px; }
+
+/* ---- Books | Sources ---- */
+
+.pills {
+    display: flex; gap: 4px; margin: 12px 14px 6px; padding: 4px;
+    background: var(--surface); border-radius: 999px;
+}
+.pill {
+    flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 9px 10px; border: 0; border-radius: 999px; cursor: pointer;
+    background: none; color: var(--muted); font-size: 13px; font-weight: 650;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    transition: background .16s, color .16s;
+}
+.pill.on { background: var(--text); color: var(--bg); }
+
+/* ---- Category chips ---- */
+
+.chips {
+    display: flex; gap: 8px; padding: 6px 13px 10px;
+    overflow-x: auto; scrollbar-width: none;
+}
+.chips::-webkit-scrollbar { height: 0; }
+
+.chip {
+    flex: none; display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 14px; border-radius: 999px; cursor: pointer;
+    background: var(--surface); border: 0;
+    color: var(--muted); font-family: var(--font); font-size: 12.5px; font-weight: 650;
+    white-space: nowrap; transition: background .16s, color .16s;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.chip.on { background: var(--text); color: var(--bg); }
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
+.chip .n { font-family: var(--mono); font-size: 10px; opacity: .65; font-variant-numeric: tabular-nums; }
+
+/* The same chip shrunk, when it labels a thing rather than filters for one. */
+.tagchip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 8px; border-radius: 999px; background: var(--surface);
+    font-size: 10px; font-weight: 650; color: var(--muted); white-space: nowrap;
+}
+.tagchip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--c); flex: none; }
+.tagchip--none { color: var(--faint); }
+
+/* In edit mode the chip becomes the button that changes it. */
+.tagbtn {
+    align-self: flex-start; margin-top: 7px; padding: 0; border: 0;
+    background: none; cursor: pointer;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+
+/* ---- Paused summary ---- */
+
+.paused {
+    display: flex; align-items: center; gap: 9px; margin: 6px 13px 2px; padding: 11px 14px;
+    border-radius: 16px; background: var(--surface);
+    font-size: 11.5px; line-height: 1.4; color: var(--muted);
+}
+.paused ::deep .sm-ico { flex: none; }
+.paused b { color: var(--text); font-weight: 650; }
+
+/* ---- The shelf ---- */
+
+.shelf { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 13px; padding: 10px 13px 20px; }
+
+.bk { position: relative; display: flex; flex-direction: column; min-width: 0; }
+
+.bk__hit {
+    display: block; width: 100%; padding: 0; border: 0; background: none;
+    cursor: pointer; text-align: left;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+
+.cov {
+    position: relative; display: block; width: 100%; aspect-ratio: 3 / 4;
+    overflow: hidden; border-radius: 15px;
+    box-shadow: 0 10px 24px -12px rgba(0, 0, 0, .75), inset 0 0 0 1px rgba(255, 255, 255, .1);
+}
+/* The render sits on the book's accent, so a PDF whose page 1 is a plain white title page
+   still lands on something rather than floating on the page background. */
+.cov img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.cov__off { position: absolute; inset: 0; display: none; place-items: center; background: rgba(0, 0, 0, .5); }
+.off .cov { filter: grayscale(1) brightness(.6); }
+.off .cov__off { display: grid; }
+
+.chip {
+    padding: 4px 10px; border-radius: 999px;
+    background: rgba(0, 0, 0, .42); border: 1px solid rgba(255, 255, 255, .22); color: #fff;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    font-family: var(--mono); font-size: 8.5px; letter-spacing: .14em; text-transform: uppercase;
+}
+
+/* Overlaid on the cover but outside it in the DOM — see the note in Library.razor. */
+.bk__edit {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 2;
+    aspect-ratio: 3 / 4; border-radius: 15px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    background: rgba(0, 0, 0, .42);
+    animation: edit-in .16s cubic-bezier(.2, .8, .2, 1) both;
+}
+/* Three 38px circles plus their gaps come to 130px inside a ~177px cover — snug, so the
+   buttons shed a little size rather than the row wrapping. */
+.bk__edit .rnd { width: 36px; height: 36px; }
+@keyframes edit-in { from { opacity: 0; } to { opacity: 1; } }
+
+.bk__bar { height: 3px; margin: 9px 0 0; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.bk__bar i { display: block; height: 100%; border-radius: 999px; background: var(--ig-blue); }
+
+.bk__t {
+    margin: 8px 0 0; font-size: 13.5px; font-weight: 650; line-height: 1.28; color: var(--text);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.bk__a {
+    margin: 2px 0 0; font-size: 11.5px; color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bk__m {
+    margin: 4px 0 0; font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em;
+    color: var(--faint); font-variant-numeric: tabular-nums;
+}
+.bk.off .bk__t, .bk.off .bk__a { color: var(--faint); }
+
+.bk__add {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px;
+    width: 100%; aspect-ratio: 3 / 4; border-radius: 15px; cursor: pointer;
+    border: 0; background: var(--surface); color: var(--muted);
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.bk__add .ring {
+    display: grid; place-items: center; width: 42px; height: 42px;
+    border-radius: 50%; border: 1px solid var(--line); background: var(--surface);
+}
+.bk__add span { font-size: 11.5px; font-weight: 650; }
+
+/* ---- Follow a source ---- */
+.addch { padding: 14px 14px 6px; display: flex; flex-direction: column; gap: 8px; }
+.addch__row { display: flex; gap: 8px; }
+
+/* Channel | Search */
+.segs { display: flex; gap: 4px; padding: 3px; background: var(--surface-2); border-radius: 11px; }
+.seg {
+    flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 8px 10px; border: 0; border-radius: 8px; cursor: pointer;
+    background: none; color: var(--muted); font-size: 13px; font-weight: 650;
+}
+.seg.on { background: var(--elev); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
+
+.addch__hint { font-size: 11.5px; line-height: 1.45; color: var(--faint); }
+
+.addch input {
+    flex: 1; min-width: 0; padding: 11px 12px;
+    background: var(--field); color: var(--text);
+    border: 1px solid var(--line); border-radius: 10px;
+    font-family: var(--font); font-size: 14px;
+}
+.addch input::placeholder { color: var(--faint); }
+.addch input:disabled { opacity: .6; }
+
+.addch__go {
+    flex: none; min-width: 66px; padding: 11px 16px; border: 0; border-radius: 10px;
+    background: var(--ig-blue); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.addch__go:disabled { opacity: .45; cursor: default; }
+
+.addch__msg { font-size: 12.5px; line-height: 1.4; }
+.addch__msg.ok { color: var(--ig-blue); }
+.addch__msg.bad { color: var(--ig-red); }
+
+/* ---- Followed channels ---- */
+.chlist { padding: 6px 0 2px; }
+.chrow { display: flex; align-items: center; gap: 12px; padding: 9px 14px; }
+/* The tag button sits before Unfollow, so the destructive one stays furthest from the thumb. */
+.chrow .rnd { margin-left: auto; }
+.chrow .rnd + .chdel { margin-left: 0; }
+
+.chava {
+    width: 46px; height: 46px; border-radius: 50%; flex: none; object-fit: cover;
+    background: var(--surface-2);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14);
+}
+.chava--letter { display: grid; place-items: center; background: linear-gradient(150deg, #ff3040, #0d0d14); }
+.chava--letter span { font-size: 17px; font-weight: 800; color: #fff; }
+
+/* A search has no face, so it gets the app's own gradient rather than a borrowed one. */
+.chava--search { display: grid; place-items: center; background: var(--ig-grad); color: #fff; }
+
+.chmeta { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
+.chmeta b { font-size: 14px; font-weight: 650; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chmeta span { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.chdel {
+    margin-left: auto; flex: none; padding: 7px 13px; border-radius: 9px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ig-red);
+    font-size: 13px; font-weight: 700; cursor: pointer;
+    animation: edit-in .16s cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.chnote { padding: 8px 16px 18px; font-size: 12px; line-height: 1.45; color: var(--faint); }
+
+/* ---- Remove confirmation ---- */
+.scrim {
+    position: fixed; inset: 0; z-index: 50; padding: 32px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, .6); animation: scrim-in .18s ease both;
+}
+@keyframes scrim-in { from { opacity: 0; } to { opacity: 1; } }
+
+.dialog {
+    width: 100%; max-width: 300px; padding: 22px 20px 14px;
+    background: var(--elev); border: 1px solid var(--line); border-radius: 16px;
+    text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px;
+    animation: dialog-in .2s cubic-bezier(.2, .8, .2, 1) both;
+}
+@keyframes dialog-in { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
+
+.dialog__ic { color: var(--ig-red); }
+.dialog h3 { font-size: 16px; font-weight: 800; }
+.dialog p { font-size: 13px; color: var(--muted); line-height: 1.45; }
+
+.dialog .btn {
+    width: 100%; margin-top: 6px; padding: 11px; border-radius: 10px; border: 0;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.dialog .btn:disabled { opacity: .6; cursor: default; }
+.dialog .btn.danger { background: var(--ig-red); color: #fff; }
+.dialog .btn.ghost { background: var(--surface); color: var(--text); }
+
+@media (prefers-reduced-motion: reduce) {
+    .bk__edit, .chdel, .scrim, .dialog { animation: none; }
+    .rnd, .pill { transition: none; }
+}

@@ -1,0 +1,52 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject SkillMax.Infrastructure.Persistence.DatabaseInitializer DbInit
+@implements IDisposable
+
+<div class="shell">
+    @* Stable element (no @key) so navigation doesn't tear down the routed page.
+       The fade is re-triggered by a tiny JS class-restart on each LocationChanged. *@
+    <article id="app-content" class="content page-fade">
+        @if (!_ready)
+        {
+            <AppLoading />
+        }
+        else if (_initError is not null)
+        {
+            <p class="init-error">Couldn't open your library: @_initError</p>
+        }
+        else
+        {
+            @Body
+        }
+    </article>
+
+    <BottomTabBar />
+</div>
+
+@code {
+    private bool _ready;
+    private string? _initError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+
+        // Wait for the background DB creation (kicked off in MauiProgram) before rendering
+        // any page, so pages never query the DB before it is ready.
+        try { await DbInit.EnsureInitializedAsync(); }
+        catch (Exception ex) { _initError = ex.Message; }
+        _ready = true;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => _ = ReplayFadeAsync();
+
+    private async Task ReplayFadeAsync()
+    {
+        try { await JS.InvokeVoidAsync("smPageFade"); }
+        catch { /* cosmetic */ }
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+}

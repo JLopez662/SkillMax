@@ -1,0 +1,67 @@
+@page "/import"
+@inject IPdfImportService Importer
+@inject NavigationManager Nav
+
+<div class="topbar">
+    <button class="ic" aria-label="Back" @onclick='() => Nav.NavigateTo("/")'><Icon Name="chevron-left" /></button>
+    <div class="ttl">Import</div>
+    <span style="width:34px"></span>
+</div>
+
+<div class="import">
+    <div class="import__ic"><Icon Name="upload" Size="40" /></div>
+    <h2>Import a PDF</h2>
+    <p>Pick a study PDF from your device. Its pages become your feed.</p>
+
+    @if (_busy)
+    {
+        <div class="import__busy">Importing &ldquo;@_name&rdquo;…</div>
+    }
+    else
+    {
+        <button class="cta" @onclick="Pick">Choose PDF</button>
+        @if (_error is not null)
+        {
+            <p class="import__err">@_error</p>
+        }
+    }
+</div>
+
+@code {
+    private bool _busy;
+    private string? _error;
+    private string? _name;
+
+    private async Task Pick()
+    {
+        _error = null;
+        try
+        {
+            var pdfType = new FilePickerFileType(new Dictionary<DevicePlatform, IEnumerable<string>>
+            {
+                { DevicePlatform.WinUI, new[] { ".pdf" } },
+                { DevicePlatform.Android, new[] { "application/pdf" } },
+                { DevicePlatform.iOS, new[] { "com.adobe.pdf" } },
+                { DevicePlatform.MacCatalyst, new[] { "pdf" } },
+            });
+
+            var result = await FilePicker.Default.PickAsync(new PickOptions { FileTypes = pdfType, PickerTitle = "Choose a PDF" });
+            if (result is null) return;
+
+            _name = result.FileName;
+            _busy = true;
+            StateHasChanged();
+
+            await using var stream = await result.OpenReadAsync();
+            await Importer.ImportAsync(stream, result.FileName);
+
+            Nav.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            _busy = false;
+            _error = ex.Message;
+            StateHasChanged();
+        }
+    }
+}

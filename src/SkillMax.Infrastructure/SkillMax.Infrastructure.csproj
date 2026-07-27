@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SkillMax.Domain\SkillMax.Domain.csproj" />
+    <ProjectReference Include="..\SkillMax.Application\SkillMax.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <!-- Cross-platform PDF page rasterizer (PDFium + SkiaSharp). Works in the
+         Windows inner loop AND on Android, so the feed's page-render path is one
+         code path. SkiaSharp flows in transitively. -->
+    <PackageReference Include="PDFtoImage" Version="4.1.1" />
+    <!-- Pure-managed PDF text layer: gives words with positions and font sizes, which is what
+         paragraph and heading recovery needs. No native deps, so it runs on Android unchanged. -->
+    <PackageReference Include="PdfPig" Version="0.1.15" />
+  </ItemGroup>
+
+</Project>

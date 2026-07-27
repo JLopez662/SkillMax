@@ -1,0 +1,201 @@
+@* One post = one short from a followed channel. Nothing loads until the post is tapped: until
+   then the card is a poster frame, so a feed full of shorts costs one image each rather than one
+   player each. The feed marks only one post Playing at a time, so tapping a second short tears
+   the first player out of the DOM — which is also what stops its audio. *@
+@using Microsoft.Maui.ApplicationModel
+@implements IDisposable
+@inject IJSRuntime JS
+@inject IUnderstoodService Understood
+
+<article class="post">
+    <div class="post-top">
+        <div class="ava" style="background:@Grad"><span>@Initial</span></div>
+        <div class="post-id">
+            <span class="post-name">@Handle</span>
+            @if (HasHandle)
+            {
+                <span class="post-sub">@Card.ChannelTitle</span>
+            }
+        </div>
+        <button class="post-more" aria-label="Open in YouTube" @onclick="OpenExternally">
+            <Icon Name="more-horizontal" />
+        </button>
+    </div>
+
+    <div class="reel">
+        @if (Playing && !_blocked)
+        {
+            <iframe @ref="_frame" class="player" src="@Card.EmbedUrl" title="@Card.Title"
+                    allow="autoplay; encrypted-media; picture-in-picture"
+                    referrerpolicy="strict-origin-when-cross-origin"></iframe>
+        }
+        else
+        {
+            <button class="poster" @onclick="PlayAsync" aria-label="@($"Play {Card.Title}")">
+                @* oar2 is the vertical frame; hqdefault is the 4:3 one every video has. Both are
+                   cropped to the card, so the fallback costs framing, not layout. *@
+                <img src="@Card.PosterUrl" alt="" loading="lazy"
+                     onerror="this.onerror=null;this.src='@Card.PosterFallbackUrl'" />
+                <span class="veil"></span>
+                @if (_blocked)
+                {
+                    @* Roughly one short in five won't play in an embed, and YouTube gives no
+                       warning until the player is already on screen. Say so, and point at the
+                       one place it will play. *@
+                    <span class="blocked">
+                        <b>Not playable in-app</b>
+                        <span>YouTube only allows this one on youtube.com</span>
+                    </span>
+                }
+                else
+                {
+                    <span class="play"><Icon Name="play" Size="26" Fill="currentColor" /></span>
+                }
+                <span class="badge">SHORT</span>
+            </button>
+        }
+    </div>
+
+    <div class="acts">
+        <div class="acts-l">
+            @* Same meaning as on a page post: seen it, got it — and the feed draws it less. *@
+            <button class="@(_understood ? "marked" : "")"
+                    aria-label="@(_understood ? "Marked as understood" : "Mark as understood")"
+                    aria-pressed="@(_understood ? "true" : "false")" @onclick="ToggleUnderstood">
+                <Icon Name="heart" Fill="@(_understood ? "currentColor" : "none")" />
+            </button>
+            <button aria-label="Note"><Icon Name="message-circle" /></button>
+            <button aria-label="Share"><Icon Name="send" /></button>
+        </div>
+        @* Saving is local for now: SavedCards is keyed by book and page, so a short has nowhere
+           to go in it yet. *@
+        <button class="acts-r @(_saved ? "on" : "")" aria-label="@(_saved ? "Saved" : "Save")" @onclick="() => _saved = !_saved">
+            <Icon Name="bookmark" Fill="@(_saved ? "currentColor" : "none")" />
+        </button>
+    </div>
+
+    @if (_understood)
+    {
+        <div class="marked-note"><Icon Name="check" Size="12" /> Understood &middot; comes round less often</div>
+    }
+
+    @* Why this is in your feed: a channel you follow, or a search you follow. *@
+    @if (Card.FoundVia is { } search)
+    {
+        <div class="likes"><span class="via"><Icon Name="search" Size="12" /></span> &ldquo;@search&rdquo; &middot; @Card.ChannelTitle</div>
+    }
+    else
+    {
+        <div class="likes">Following &middot; @Card.ChannelTitle</div>
+    }
+    <div class="cap"><b>@Handle</b> @Card.Title</div>
+    <div class="foot">
+        <span class="time">@TimeLabel</span>
+        <button class="ext" @onclick="OpenExternally">Open in YouTube <Icon Name="external-link" Size="11" /></button>
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public ShortCard Card { get; set; } = default!;
+
+    /// <summary>Set by the feed on the one post that owns playback.</summary>
+    [Parameter] public bool Playing { get; set; }
+
+    /// <summary>Raised with this post's video id when its poster is tapped.</summary>
+    [Parameter] public EventCallback<string> OnPlay { get; set; }
+
+    private bool _understood;
+    private bool _saved;
+
+    private ElementReference _frame;
+    private DotNetObjectReference<ShortPost>? _self;
+
+    /// <summary>This video loaded a player but never played — see smShorts in cards.js.</summary>
+    private bool _blocked;
+
+    private bool _watching;
+    private string? _loaded;
+
+    /// <summary>A search hit doesn't always come with a handle; then the name is all there is.</summary>
+    private bool HasHandle => !string.IsNullOrWhiteSpace(Card.ChannelHandle);
+
+    private string Handle => HasHandle ? "@" + Card.ChannelHandle : Card.ChannelTitle;
+    private string Initial => string.IsNullOrWhiteSpace(Card.ChannelTitle) ? "?" : Card.ChannelTitle.Trim()[..1].ToUpperInvariant();
+    private string Grad => "linear-gradient(150deg, #ff3040, #0d0d14)";
+
+    private string TimeLabel => Card.Published is { } p ? $"Short · {Ago(p)}" : "Short";
+
+    /// <summary>
+    /// A reshuffle hands this same post a different short, so anything learned about the last one
+    /// has to go with it — otherwise the new video inherits the old one's "won't play" verdict.
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        if (_loaded == Card.VideoId) return;
+        _loaded = Card.VideoId;
+        _blocked = false;
+        _saved = false;
+
+        // Unlike the local-only save, this one is stored, so it arrives with the card.
+        _understood = Card.Understood;
+    }
+
+    private async Task ToggleUnderstood()
+    {
+        _understood = await Understood.ToggleShortAsync(Card.VideoId);
+        StateHasChanged();
+    }
+
+    private Task PlayAsync()
+    {
+        _blocked = false;   // a retry deserves a fresh player; the failure can be the network
+        return OnPlay.InvokeAsync(Card.VideoId);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var shouldWatch = Playing && !_blocked;
+        if (shouldWatch == _watching) return;
+        _watching = shouldWatch;
+
+        try
+        {
+            if (shouldWatch)
+            {
+                _self ??= DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("smShorts.watch", _frame, _self);
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("smShorts.stop");
+            }
+        }
+        catch (JSDisconnectedException) { /* view torn down mid-play */ }
+    }
+
+    /// <summary>Called from JS when the player errored, or never got as far as playing.</summary>
+    [JSInvokable]
+    public Task OnEmbedFailed()
+    {
+        _blocked = true;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => _self?.Dispose();
+
+    private async Task OpenExternally()
+    {
+        try { await Launcher.Default.OpenAsync(Card.WatchUrl); }
+        catch (Exception) { /* no browser / no YouTube app on this device */ }
+    }
+
+    private static string Ago(DateTimeOffset when)
+    {
+        var span = DateTimeOffset.UtcNow - when;
+        if (span < TimeSpan.FromHours(1)) return $"{Math.Max(1, (int)span.TotalMinutes)}m ago";
+        if (span < TimeSpan.FromDays(1)) return $"{(int)span.TotalHours}h ago";
+        if (span < TimeSpan.FromDays(30)) return $"{(int)span.TotalDays}d ago";
+        if (span < TimeSpan.FromDays(365)) return $"{(int)(span.TotalDays / 30)}mo ago";
+        return $"{(int)(span.TotalDays / 365)}y ago";
+    }
+}

@@ -1,0 +1,136 @@
+@* The words that travel with a page when it's handed to ChatGPT. Edited here, used by every book
+   post's chat button; the preview underneath is the same renderer the post uses, so what's shown
+   is what will be sent. *@
+@page "/settings/prompt"
+@inject IAiPromptService AiPrompts
+@inject NavigationManager Nav
+
+<div class="topbar">
+    <button class="ic" aria-label="Back" @onclick="Back"><Icon Name="chevron-left" /></button>
+    <div class="ttl">ChatGPT prompt</div>
+    <span style="width:36px"></span>
+</div>
+
+<div class="pw">
+    <p class="pw__lede">
+        Sent ahead of the page when you tap <Icon Name="sparkles" Size="14" /> on a book post, so the
+        chat starts knowing what it's holding and waits for your question.
+    </p>
+
+    <textarea class="pw__ta" rows="14" maxlength="2000" spellcheck="false"
+              aria-label="Prompt template" value="@_template" @oninput="OnEdit"></textarea>
+
+    <div class="pw__row">
+        <span class="pw__count @(Near ? "near" : "")">@_template.Length / 2000</span>
+        @if (_msg is not null)
+        {
+            <span class="pw__msg">@_msg</span>
+        }
+        <button class="pw__reset" disabled="@(IsDefault || _saving)" @onclick="Reset">Reset</button>
+        <button class="pw__save" disabled="@_saving" @onclick="Save">Save</button>
+    </div>
+
+    @if (!_template.Contains("{text}"))
+    {
+        <p class="pw__warn">
+            Without <code>{text}</code> the page itself never gets sent &mdash; only the wording above.
+        </p>
+    }
+
+    <h3 class="pw__h">What you can drop in</h3>
+    <ul class="pw__tokens">
+        @foreach (var t in AiPromptTemplate.Tokens)
+        {
+            <li><code>{@t.Name}</code><span>@t.What</span></li>
+        }
+    </ul>
+    <p class="pw__note">
+        Wrap a phrase in <code>[[&nbsp;]]</code> and it's dropped whole when something inside it is
+        missing &mdash; <code>[[ by {author}]]</code> disappears on a book that never named one,
+        instead of leaving a sentence ending in "by".
+    </p>
+
+    <h3 class="pw__h">Preview</h3>
+    <div class="pw__segs" role="group" aria-label="Preview against">
+        <button class="pw__seg @(_sparse ? "" : "on")" @onclick="() => _sparse = false">Book with everything</button>
+        <button class="pw__seg @(_sparse ? "on" : "")" @onclick="() => _sparse = true">No author or chapter</button>
+    </div>
+    <pre class="pw__prev">@Preview</pre>
+</div>
+
+@code {
+    private string _template = "";
+    private string? _msg;
+    private bool _saving;
+    private bool _sparse;
+
+    private bool IsDefault => _template.Trim() == AiPromptTemplate.Default.Trim();
+    private bool Near => _template.Length > 1800;
+    private string Preview => AiPromptTemplate.Render(_template, _sparse ? Sparse : Full);
+
+    /// <summary>
+    /// A stand-in page, not a real one: the editor has to work before anything has been imported,
+    /// and a fixed sample makes the effect of an edit easy to see between saves.
+    /// </summary>
+    private static readonly AiPromptContext Full = new()
+    {
+        Book = "Power in the Vortex",
+        Author = "Esther Hicks",
+        Chapter = "Chapter 4: Allowing",
+        Page = 47,
+        PageCount = 214,
+        Text = "There is a vibrational Vortex in which everything you have ever asked for already "
+             + "exists. It is not a place you must build. It is a place you must relax into.",
+    };
+
+    /// <summary>The same page from a book with no author and no readable outline.</summary>
+    private static readonly AiPromptContext Sparse = Full with { Author = null, Chapter = null, PageCount = 0 };
+
+    protected override async Task OnInitializedAsync() => _template = await AiPrompts.GetTemplateAsync();
+
+    /// <summary>Typing clears the last save message: it stops describing the box the moment it changes.</summary>
+    private void OnEdit(ChangeEventArgs e)
+    {
+        _template = e.Value?.ToString() ?? "";
+        _msg = null;
+    }
+
+    private async Task Save()
+    {
+        _saving = true;
+        try
+        {
+            await AiPrompts.SaveTemplateAsync(_template);
+
+            // Read it back: a blank or default-verbatim save clears the setting, and the box should
+            // show what the posts will actually use rather than what was typed.
+            _template = await AiPrompts.GetTemplateAsync();
+            _msg = "Saved";
+        }
+        catch (Exception ex)
+        {
+            _msg = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task Reset()
+    {
+        _saving = true;
+        try
+        {
+            await AiPrompts.SaveTemplateAsync(null);
+            _template = AiPromptTemplate.Default;
+            _msg = "Back to the default";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Back() => Nav.NavigateTo("/profile");
+}

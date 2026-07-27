@@ -1,0 +1,30 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Local Windows-only inner-loop opt-in (each dev sets their own)
+Directory.Build.props
+
+# MAUI / device
+*.binlog
+*.apk
+*.aab
+*.ipa
+
+# Local databases / generated page cache
+*.db
+*.db-shm
+*.db-wal
+
+# OS
+.DS_Store
+Thumbs.db

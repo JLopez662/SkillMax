@@ -1,0 +1,26 @@
+@* Full-bleed layout for the reader: no tab bar, no bottom padding — reading gets the whole screen.
+   Still waits on the same DB gate as MainLayout so a page can't query before the DB exists. *@
+@inherits LayoutComponentBase
+@inject SkillMax.Infrastructure.Persistence.DatabaseInitializer DbInit
+
+<div class="shell">
+    @if (_ready)
+    {
+        @Body
+    }
+    else
+    {
+        <AppLoading />
+    }
+</div>
+
+@code {
+    private bool _ready;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await DbInit.EnsureInitializedAsync(); }
+        catch { /* the feed surfaces init errors; the reader just waits */ }
+        _ready = true;
+    }
+}

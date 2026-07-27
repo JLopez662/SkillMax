@@ -1,0 +1,444 @@
+@* The stories viewer: full-bleed, one channel at a time, each short drawn at random from that
+   channel. Two things a feed post can shrug off matter here, because this is the whole screen:
+
+     * Roughly one short in five refuses to play in an embed, and nothing predicts which until the
+       player is up. A feed post drops back to its poster and you scroll past it; here there is
+       nothing to scroll to, so the viewer says so briefly and then deals another.
+     * The segment bar follows the real player. A story segment elsewhere is a fixed five seconds;
+       a short runs fifteen to sixty, so a timer would be a lie. See smStories in cards.js. *@
+@using Microsoft.Maui.ApplicationModel
+@implements IAsyncDisposable
+@inject IStoryService Stories
+@inject IUnderstoodService Understood
+@inject ShortsOptions Options
+@inject IJSRuntime JS
+
+@if (_open && Story is { } story)
+{
+    <div class="viewer" role="dialog" aria-modal="true" aria-label="@($"Shorts from @{story.Handle}")">
+
+        <div class="reel">
+            @if (Card is { } card)
+            {
+                @if (Live)
+                {
+                    <iframe @ref="_frame" class="player" src="@EmbedUrl(card)" title="@card.Title"
+                            allow="autoplay; encrypted-media; picture-in-picture"
+                            referrerpolicy="strict-origin-when-cross-origin"></iframe>
+                }
+                else
+                {
+                    @* Blocked, or the channel ran dry: the poster holds the frame so the panel
+                       over it isn't floating on black. *@
+                    <img class="poster" src="@card.PosterUrl" alt="" loading="lazy"
+                         onerror="this.onerror=null;this.src='@card.PosterFallbackUrl'" />
+                }
+            }
+            <span class="vig"></span>
+        </div>
+
+        @* Transparent layer over the player — the iframe swallows its own pointer events, so tap
+           and hold have to be measured on something above it. The chrome below sits higher again
+           and keeps its own clicks. *@
+        <div class="zones" @ref="_zones"></div>
+
+        <div class="bars">
+            @for (var i = 0; i < _deck.Count; i++)
+            {
+                <div class="bar">
+                    @if (i < _slot)
+                    {
+                        <span style="width:100%"></span>
+                    }
+                    else if (i == _slot)
+                    {
+                        @* The one element smStories writes to, whatever the deck size. *@
+                        <span id="sm-story-fill"></span>
+                    }
+                    else
+                    {
+                        <span></span>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="head">
+            @* Same two-layer tile as the rail, so a channel doesn't wear its picture in the rail
+               and a bare initial once you've opened it. *@
+            <span class="ava">
+                <span class="letter" style="background:@ChannelTint.Gradient(story.Hue)">@Initial(story.Title)</span>
+                @if (story.AvatarUrl is { Length: > 0 } avatar)
+                {
+                    <img src="@avatar" alt="" onerror="this.style.display='none'" />
+                }
+            </span>
+            <span class="who">
+                <span class="handle">@("@" + story.Handle)</span>
+                @if (Card?.Published is { } published)
+                {
+                    <span class="ago">@Ago(published)</span>
+                }
+            </span>
+            <button class="x" aria-label="Close" @onclick="CloseAsync"><Icon Name="x" Size="24" /></button>
+        </div>
+
+        @* A random pick has to say it's random, or a channel serving the same short twice in a
+           week reads as a bug rather than a coin toss. *@
+        @if (_deck.Count > 0)
+        {
+            <div class="why">Random &middot; pick @(_slot + 1) of @_deck.Count</div>
+        }
+
+        @if (_paused)
+        {
+            <div class="paused" aria-hidden="true"><span><i></i><i></i></span></div>
+        }
+
+        @if (Card is { } current && !_exhausted)
+        {
+            <div class="foot">
+                <div class="title">@current.Title</div>
+                <div class="row">
+                    <button class="roll" @onclick="RerollAsync">
+                        <Icon Name="dice" Size="17" /> Another from this channel
+                    </button>
+                    <button class="act @(current.Understood ? "marked" : "")"
+                            aria-pressed="@(current.Understood ? "true" : "false")"
+                            aria-label="@(current.Understood ? "Marked as understood" : "Mark as understood")"
+                            @onclick="ToggleUnderstoodAsync">
+                        <Icon Name="heart" Size="21" Fill="@(current.Understood ? "currentColor" : "none")" />
+                    </button>
+                    <button class="act" aria-label="Open in YouTube" @onclick="OpenExternallyAsync">
+                        <Icon Name="external-link" Size="19" />
+                    </button>
+                </div>
+            </div>
+        }
+
+        @if (_blocked)
+        {
+            <div class="toast" role="status">
+                <b>That one won't play in-app</b>
+                <span>Dealing another from this channel&hellip;</span>
+            </div>
+        }
+
+        @if (_exhausted)
+        {
+            <div class="end">
+                <b>That's the deck</b>
+                <span>@EndReason(story)</span>
+                <button @onclick="NextChannelAsync">
+                    @(_index + 1 < _stories.Count ? "Next channel" : "Back to the feed")
+                </button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>Raised once the viewer is gone, so the rail can re-read its rings.</summary>
+    [Parameter] public EventCallback OnClosed { get; set; }
+
+    private ElementReference _zones;
+    private ElementReference _frame;
+    private DotNetObjectReference<StoryViewer>? _self;
+
+    private IReadOnlyList<ChannelStory> _stories = Array.Empty<ChannelStory>();
+    private int _index;
+    private bool _open;
+
+    /// <summary>
+    /// One deck per channel, kept for as long as the viewer is open. Tapping back has to show the
+    /// short you just saw — re-drawing on the way back would make the viewer feel broken.
+    /// </summary>
+    private readonly Dictionary<string, List<ShortCard>> _decks = new();
+
+    private List<ShortCard> _deck = new();
+    private int _slot;
+
+    private bool _blocked;      // this draw refused to embed
+    private bool _paused;
+    private bool _exhausted;    // nothing left to deal from this channel
+
+    private bool _gesturesWired;
+    private string? _watching;
+
+    private ChannelStory? Story => _index >= 0 && _index < _stories.Count ? _stories[_index] : null;
+    private ShortCard? Card => _slot >= 0 && _slot < _deck.Count ? _deck[_slot] : null;
+
+    /// <summary>Whether a player should be on screen at all, as opposed to a poster and a panel.</summary>
+    private bool Live => !_blocked && !_exhausted;
+
+    /// <summary>
+    /// Open on a channel. <paramref name="stories"/> is the rail's own order, which the viewer
+    /// walks as one channel runs out and the next takes over.
+    /// </summary>
+    public async Task OpenAsync(IReadOnlyList<ChannelStory> stories, int index)
+    {
+        if (index < 0 || index >= stories.Count) return;
+
+        _stories = stories;
+        _index = index;
+        _open = true;
+        _decks.Clear();
+
+        await LoadChannelAsync();
+    }
+
+    public async Task CloseAsync()
+    {
+        if (!_open) return;
+
+        _open = false;
+        _decks.Clear();
+        _deck = new List<ShortCard>();
+        _slot = 0;
+        _watching = null;
+        _gesturesWired = false;
+        Reset();
+
+        await StopAsync();
+        StateHasChanged();
+        await OnClosed.InvokeAsync();
+    }
+
+    private async Task LoadChannelAsync(bool fromEnd = false)
+    {
+        if (Story is not { } story) return;
+
+        if (!_decks.TryGetValue(story.ChannelId, out var deck))
+        {
+            var drawn = await Stories.DrawAsync(story.ChannelId, Options.StoryDeckSize, Array.Empty<string>());
+            deck = drawn.ToList();
+            _decks[story.ChannelId] = deck;
+
+            // Opening it is what counts as seen, whether or not the deck turned out to hold
+            // anything — a channel that can't be reached shouldn't keep its ring lit.
+            await Stories.MarkSeenAsync(story.ChannelId);
+        }
+
+        _deck = deck;
+        _slot = fromEnd && deck.Count > 0 ? deck.Count - 1 : 0;
+
+        Reset();
+        _exhausted = deck.Count == 0;
+        StateHasChanged();
+    }
+
+    private void Reset()
+    {
+        _blocked = false;
+        _paused = false;
+        _exhausted = false;
+    }
+
+    // ---------------------------------------------------------------- moving around
+
+    private async Task NextAsync()
+    {
+        if (_slot + 1 < _deck.Count)
+        {
+            _slot++;
+            Reset();
+            StateHasChanged();
+            return;
+        }
+
+        await NextChannelAsync();
+    }
+
+    private async Task NextChannelAsync()
+    {
+        if (_index + 1 >= _stories.Count) { await CloseAsync(); return; }
+
+        _index++;
+        await LoadChannelAsync();
+    }
+
+    private async Task PreviousAsync()
+    {
+        if (_slot > 0)
+        {
+            _slot--;
+            Reset();
+            StateHasChanged();
+            return;
+        }
+
+        // Already at the first channel's first short: restart it rather than closing, which is
+        // what tapping back on the very first story does everywhere else.
+        if (_index == 0)
+        {
+            Reset();
+            StateHasChanged();
+            return;
+        }
+
+        _index--;
+        await LoadChannelAsync(fromEnd: true);
+    }
+
+    /// <summary>Swap this slot for a short from the same channel that hasn't been dealt yet.</summary>
+    private async Task RerollAsync()
+    {
+        if (Story is not { } story) return;
+
+        var drawn = await Stories.DrawAsync(
+            story.ChannelId, 1, _deck.Select(card => card.VideoId).ToList());
+
+        if (drawn.Count == 0)
+        {
+            _blocked = false;
+            _exhausted = true;
+            StateHasChanged();
+            return;
+        }
+
+        // A re-roll replaces the current pick rather than growing the deck, so "pick 2 of 3"
+        // keeps meaning what it says.
+        if (_deck.Count == 0) _deck.Add(drawn[0]);
+        else _deck[_slot] = drawn[0];
+
+        Reset();
+        StateHasChanged();
+    }
+
+    // ---------------------------------------------------------------- the two post actions
+
+    private async Task ToggleUnderstoodAsync()
+    {
+        if (Card is not { } card) return;
+
+        var understood = await Understood.ToggleShortAsync(card.VideoId);
+        _deck[_slot] = card with { Understood = understood };
+        StateHasChanged();
+    }
+
+    private async Task OpenExternallyAsync()
+    {
+        if (Card is not { } card) return;
+
+        // Leaving without pausing means coming back to a story that played on without you.
+        _paused = true;
+        await CommandAsync("pauseVideo");
+        StateHasChanged();
+
+        try { await Launcher.Default.OpenAsync(card.WatchUrl); }
+        catch (Exception) { /* no browser / no YouTube app on this device */ }
+    }
+
+    // ---------------------------------------------------------------- called from JS
+
+    /// <summary>The player errored, or never got as far as playing.</summary>
+    [JSInvokable]
+    public async Task OnEmbedFailed()
+    {
+        await InvokeAsync(() =>
+        {
+            _blocked = true;
+            StateHasChanged();
+        });
+
+        // Long enough to read, short enough not to feel like a dead end.
+        await Task.Delay(1200);
+
+        await InvokeAsync(async () =>
+        {
+            if (!_open || !_blocked) return;   // moved on already
+            await RerollAsync();
+        });
+    }
+
+    /// <summary>The short played to the end — this is what replaces a story's five-second timer.</summary>
+    [JSInvokable]
+    public Task OnEnded() => InvokeAsync(NextAsync);
+
+    [JSInvokable]
+    public Task OnTap(bool left) => InvokeAsync(() => left ? PreviousAsync() : NextAsync());
+
+    [JSInvokable]
+    public Task OnHold(bool held) => InvokeAsync(async () =>
+    {
+        _paused = held;
+        StateHasChanged();
+        await CommandAsync(held ? "pauseVideo" : "playVideo");
+    });
+
+    [JSInvokable]
+    public Task OnSwipeClose() => InvokeAsync(CloseAsync);
+
+    // ---------------------------------------------------------------- JS plumbing
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_open) return;
+
+        try
+        {
+            _self ??= DotNetObjectReference.Create(this);
+
+            if (!_gesturesWired)
+            {
+                _gesturesWired = true;
+                await JS.InvokeVoidAsync("smStories.gestures", _zones, _self);
+            }
+
+            // Re-watch whenever the player changes hands. Null means there's no player up at all,
+            // in which case the watcher has to be torn down or it reports on a frame that's gone.
+            var playing = Live ? Card?.VideoId : null;
+            if (playing == _watching) return;
+            _watching = playing;
+
+            if (playing is null) await JS.InvokeVoidAsync("smStories.stop");
+            else await JS.InvokeVoidAsync("smStories.watch", _frame, _self);
+        }
+        catch (JSDisconnectedException) { /* view torn down mid-play */ }
+    }
+
+    private async Task CommandAsync(string func)
+    {
+        if (!Live || Card is null) return;
+
+        try { await JS.InvokeVoidAsync("smStories.command", _frame, func); }
+        catch (JSDisconnectedException) { }
+    }
+
+    private async Task StopAsync()
+    {
+        try { await JS.InvokeVoidAsync("smStories.stop"); }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await StopAsync();
+        _self?.Dispose();
+    }
+
+    // ---------------------------------------------------------------- presentation
+
+    /// <summary>
+    /// The feed's embed URL without the player's own controls: they'd sit on top of the caption
+    /// and the buttons, and the segment bar already says how far through this short is.
+    /// </summary>
+    private static string EmbedUrl(ShortCard card) => card.EmbedUrl + "&controls=0";
+
+    private string EndReason(ChannelStory story) => _deck.Count == 0
+        ? $"Nothing from @{story.Handle} could be loaded — it may be offline."
+        : $"You've seen everything @{story.Handle} had to offer today.";
+
+    private static string Initial(string title) =>
+        string.IsNullOrWhiteSpace(title) ? "?" : title.Trim()[..1].ToUpperInvariant();
+
+    private static string Ago(DateTimeOffset when)
+    {
+        var span = DateTimeOffset.UtcNow - when;
+        if (span < TimeSpan.FromHours(1)) return $"{Math.Max(1, (int)span.TotalMinutes)}m";
+        if (span < TimeSpan.FromDays(1)) return $"{(int)span.TotalHours}h";
+        if (span < TimeSpan.FromDays(30)) return $"{(int)span.TotalDays}d";
+        if (span < TimeSpan.FromDays(365)) return $"{(int)(span.TotalDays / 30)}mo";
+        return $"{(int)(span.TotalDays / 365)}y";
+    }
+}

@@ -1,0 +1,601 @@
+@page "/library"
+@inject IBookService Books
+@inject IChannelService Channels
+@inject ISearchSourceService Searches
+@inject IPageImageService PageImages
+@inject ICategoryService CategoryService
+@inject NavigationManager Nav
+
+<div class="topbar">
+    <div class="ttl">Library</div>
+    <div class="tb-actions">
+        @if (CanEdit)
+        {
+            @* The pencil carries its own state — it fills in and becomes a tick while editing,
+               so the control doesn't need a word next to it. *@
+            <button class="rnd @(_editing ? "rnd--on" : "")" @onclick="ToggleEdit"
+                    aria-pressed="@(_editing ? "true" : "false")"
+                    aria-label="@(_editing ? "Done editing" : "Edit library")">
+                <Icon Name="@(_editing ? "check" : "pencil")" Size="18" />
+            </button>
+        }
+        @if (_tab == Tab.Books)
+        {
+            <button class="rnd" aria-label="Import a PDF" @onclick='() => Nav.NavigateTo("/import")'>
+                <Icon Name="plus" Size="20" />
+            </button>
+        }
+    </div>
+</div>
+
+@* What feeds this app: pages you imported, and shorts from sources you follow. *@
+<div class="pills" role="tablist">
+    <button class="pill @(_tab == Tab.Books ? "on" : "")" role="tab" aria-selected="@Selected(Tab.Books)"
+            @onclick="() => Switch(Tab.Books)">
+        <Icon Name="grid" Size="16" /> Books@(_books is { Count: > 0 } ? $" · {_books.Count}" : "")
+    </button>
+    <button class="pill @(_tab == Tab.Sources ? "on" : "")" role="tab" aria-selected="@Selected(Tab.Sources)"
+            @onclick="() => Switch(Tab.Sources)">
+        <Icon Name="play" Size="14" Fill="currentColor" /> Sources@(SourceCount > 0 ? $" · {SourceCount}" : "")
+    </button>
+</div>
+
+@* One rail, both tabs: the chips are the same categories whether they're sorting books or the
+   channels and searches that feed the same subject. *@
+@if (_categories.Count > 0 && (_tab == Tab.Books ? _books is { Count: > 0 } : SourceCount > 0))
+{
+    <div class="chips">
+        <button class="chip @(_filter == AllFilter ? "on" : "")" @onclick="() => SetFilter(AllFilter)">
+            All <span class="n">@TotalInTab</span>
+        </button>
+        @foreach (var c in _categories)
+        {
+            <button class="chip @(_filter == c.Id ? "on" : "")" style="--c:@c.ColorHex"
+                    @onclick="() => SetFilter(c.Id)">
+                <span class="dot"></span>@c.Name <span class="n">@CountIn(c.Id)</span>
+            </button>
+        }
+        @if (LooseInTab > 0)
+        {
+            <button class="chip @(_filter == LooseFilter ? "on" : "")" @onclick="() => SetFilter(LooseFilter)">
+                Uncategorised <span class="n">@LooseInTab</span>
+            </button>
+        }
+    </div>
+}
+
+@if (_tab == Tab.Books)
+{
+    @if (_books is null)
+    {
+        <div class="muted-center">Loading…</div>
+    }
+    else if (_books.Count == 0)
+    {
+        <div class="empty">
+            <div class="empty__ic"><Icon Name="grid" Size="42" /></div>
+            <h2>No books yet</h2>
+            <p>Import a PDF to start your shelf — each one feeds your scroll.</p>
+            <button class="cta" @onclick='() => Nav.NavigateTo("/import")'>Import a PDF</button>
+        </div>
+    }
+    else
+    {
+        @if (PausedCount > 0)
+        {
+            <div class="paused">
+                <Icon Name="eye-off" Size="15" />
+                <span>
+                    <b>@PausedCount book@(PausedCount > 1 ? "s" : "") paused.</b>
+                    Still here, still marked — just not in your feed.
+                </span>
+            </div>
+        }
+
+        <div class="shelf">
+            @foreach (var b in VisibleBooks)
+            {
+                <div class="bk @(b.IsArchived ? "off" : "")">
+                    <button class="bk__hit" aria-label="@($"Open {b.Title}")" disabled="@_editing"
+                            @onclick='() => Nav.NavigateTo($"/book/{b.Id}")'>
+                        <span class="cov" style="background:@Grad(b.ColorHex)">
+                            @if (_covers.TryGetValue(b.Id, out var cover) && cover is not null)
+                            {
+                                <img src="@cover" alt="" />
+                            }
+                            <span class="cov__off"><span class="chip">Paused</span></span>
+                        </span>
+                    </button>
+
+                    @* Sibling of the cover, never a child: `.off .cov` carries a grayscale filter,
+                       and a filter applies to descendants — it would grey out these controls too. *@
+                    @if (_editing)
+                    {
+                        <div class="bk__edit">
+                            <button class="rnd rnd--art @(b.IsArchived ? "" : "rnd--on")" role="switch"
+                                    aria-checked="@(b.IsArchived ? "false" : "true")"
+                                    aria-label="@($"{(b.IsArchived ? "Resume" : "Pause")} {b.Title}")"
+                                    @onclick="() => ToggleEnabled(b)">
+                                <Icon Name="power" Size="18" />
+                            </button>
+                            @* The rename sheet lives on the book's own page — this is the shortcut
+                               to it, because a bad title is most obvious right here on the shelf. *@
+                            <button class="rnd rnd--art" aria-label="@($"Rename {b.Title}")"
+                                    @onclick='() => Nav.NavigateTo($"/book/{b.Id}?rename=1")'>
+                                <Icon Name="pencil" Size="17" />
+                            </button>
+                            <button class="rnd rnd--art rnd--danger" aria-label="@($"Remove {b.Title}")"
+                                    @onclick="() => _pending = b">
+                                <Icon Name="trash" Size="17" />
+                            </button>
+                        </div>
+                    }
+
+                    <div class="bk__bar"><i style="width:@(Pct(b))%"></i></div>
+                    <p class="bk__t">@b.Title</p>
+                    @if (!string.IsNullOrWhiteSpace(b.Author))
+                    {
+                        <p class="bk__a">@b.Author</p>
+                    }
+                    <p class="bk__m">@Meta(b)</p>
+
+                    @if (_editing)
+                    {
+                        <button class="tagbtn" @onclick="() => FileBook(b)">
+                            @if (Category(b.CategoryId) is { } bc)
+                            {
+                                <span class="tagchip" style="--c:@bc.ColorHex"><span class="dot"></span>@bc.Name</span>
+                            }
+                            else
+                            {
+                                <span class="tagchip tagchip--none">Uncategorised</span>
+                            }
+                        </button>
+                    }
+                    else if (Category(b.CategoryId) is { } cat)
+                    {
+                        <p class="bk__cat">
+                            <span class="tagchip" style="--c:@cat.ColorHex"><span class="dot"></span>@cat.Name</span>
+                        </p>
+                    }
+                </div>
+            }
+
+            @if (!_editing)
+            {
+                <button class="bk__add" @onclick='() => Nav.NavigateTo("/import")'>
+                    <span class="ring"><Icon Name="plus" Size="20" /></span>
+                    <span>Import</span>
+                </button>
+            }
+        </div>
+    }
+}
+else
+{
+    <div class="addch">
+        @* Two ways to get shorts: one creator, or one subject across every creator. *@
+        <div class="segs" role="tablist">
+            <button class="seg @(_mode == AddMode.Channel ? "on" : "")" role="tab"
+                    aria-selected="@(_mode == AddMode.Channel ? "true" : "false")" @onclick="() => SetMode(AddMode.Channel)">
+                <Icon Name="user" Size="15" /> Channel
+            </button>
+            <button class="seg @(_mode == AddMode.Search ? "on" : "")" role="tab"
+                    aria-selected="@(_mode == AddMode.Search ? "true" : "false")" @onclick="() => SetMode(AddMode.Search)">
+                <Icon Name="search" Size="15" /> Search
+            </button>
+        </div>
+
+        <div class="addch__row">
+            @if (_mode == AddMode.Channel)
+            {
+                @* Whatever's to hand: the handle, or any channel link off the share sheet. *@
+                <input type="text" placeholder="@@handle or a channel link"
+                       inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false"
+                       disabled="@_adding"
+                       @bind="_input" @bind:event="oninput" @onkeydown="OnKeyDown" />
+            }
+            else
+            {
+                <input type="text" placeholder="e.g. 12 week year"
+                       inputmode="search" autocomplete="off" autocapitalize="none" spellcheck="false"
+                       disabled="@_adding"
+                       @bind="_input" @bind:event="oninput" @onkeydown="OnKeyDown" />
+            }
+            <button class="addch__go" disabled="@(_adding || string.IsNullOrWhiteSpace(_input))" @onclick="AddSource">
+                @(_adding ? "…" : "Add")
+            </button>
+        </div>
+
+        <p class="addch__hint">
+            @(_mode == AddMode.Channel
+                ? "Every short that creator posts."
+                : "Shorts YouTube returns for that search, from any creator — it keeps finding new ones.")
+        </p>
+
+        @if (_message is not null)
+        {
+            <p class="addch__msg @(_ok ? "ok" : "bad")">@_message</p>
+        }
+    </div>
+
+    @if (_channels is null || _searches is null)
+    {
+        <div class="muted-center">Loading…</div>
+    }
+    else if (SourceCount == 0)
+    {
+        <div class="empty">
+            <div class="empty__ic"><Icon Name="play" Size="42" /></div>
+            <h2>No sources yet</h2>
+            <p>Follow a creator, or a search like “12 week year”, and shorts drop into your feed between pages.</p>
+        </div>
+    }
+    else
+    {
+        <div class="chlist">
+            @foreach (var c in VisibleChannels)
+            {
+                <div class="chrow">
+                    @if (!string.IsNullOrWhiteSpace(c.AvatarUrl))
+                    {
+                        <img class="chava" src="@c.AvatarUrl" alt="" />
+                    }
+                    else
+                    {
+                        <div class="chava chava--letter"><span>@Initial(c.Title)</span></div>
+                    }
+                    <div class="chmeta">
+                        <b>@c.Title</b>
+                        <span>@("@" + c.Handle)</span>
+                        @if (!_editing && Category(c.CategoryId) is { } cat)
+                        {
+                            <span class="tagchip" style="--c:@cat.ColorHex"><span class="dot"></span>@cat.Name</span>
+                        }
+                    </div>
+                    @if (_editing)
+                    {
+                        <button class="rnd rnd--sm" aria-label="@($"Category for {c.Title}")"
+                                @onclick="() => FileChannel(c)">
+                            <Icon Name="tag" Size="16" />
+                        </button>
+                        <button class="chdel" aria-label="@($"Unfollow {c.Title}")" @onclick="() => Unfollow(c)">
+                            Unfollow
+                        </button>
+                    }
+                </div>
+            }
+
+            @foreach (var s in VisibleSearches)
+            {
+                <div class="chrow">
+                    <div class="chava chava--search"><Icon Name="search" Size="20" /></div>
+                    <div class="chmeta">
+                        <b>@s.Query</b>
+                        <span>YouTube search</span>
+                        @if (!_editing && Category(s.CategoryId) is { } cat)
+                        {
+                            <span class="tagchip" style="--c:@cat.ColorHex"><span class="dot"></span>@cat.Name</span>
+                        }
+                    </div>
+                    @if (_editing)
+                    {
+                        <button class="rnd rnd--sm" aria-label="@($"Category for {s.Query}")"
+                                @onclick="() => FileSearch(s)">
+                            <Icon Name="tag" Size="16" />
+                        </button>
+                        <button class="chdel" aria-label="@($"Remove the search {s.Query}")" @onclick="() => RemoveSearch(s)">
+                            Remove
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+        <p class="chnote">Shorts from these sources appear in your feed after every @Every pages.</p>
+    }
+}
+
+@if (_pending is not null)
+{
+    <div class="scrim" @onclick="Cancel">
+        <div class="dialog" @onclick:stopPropagation="true">
+            <div class="dialog__ic"><Icon Name="trash" Size="22" /></div>
+            <h3>Remove &ldquo;@_pending.Title&rdquo;?</h3>
+            <p>This deletes the imported PDF and its pages from your feed. This can’t be undone.</p>
+            <button class="btn danger" disabled="@_deleting" @onclick="RemoveAsync">@(_deleting ? "Removing…" : "Remove")</button>
+            <button class="btn ghost" disabled="@_deleting" @onclick="Cancel">Cancel</button>
+        </div>
+    </div>
+}
+
+<CategoryPicker @ref="_picker" OnPicked="OnCategoryPicked" />
+
+@code {
+    [Inject] private ShortsOptions Options { get; set; } = default!;
+
+    /// <summary>Chip filter sentinels: everything, and the things nobody has filed.</summary>
+    private const int AllFilter = 0;
+    private const int LooseFilter = -1;
+
+    private enum Tab { Books, Sources }
+
+    private enum AddMode { Channel, Search }
+
+    private Tab _tab = Tab.Books;
+    private AddMode _mode = AddMode.Channel;
+    private IReadOnlyList<Book>? _books;
+
+    /// <summary>Cover per book id; null means "rendered and there's nothing usable" — keep the gradient.</summary>
+    private readonly Dictionary<int, string?> _covers = new();
+    private bool _fetchingCovers;
+
+    private IReadOnlyList<Category> _categories = Array.Empty<Category>();
+    private int _filter = AllFilter;
+
+    private CategoryPicker? _picker;
+
+    /// <summary>What the picker is filing, so its answer can be applied to the right row.</summary>
+    private (string Kind, int Id)? _filing;
+
+    private IReadOnlyList<Channel>? _channels;
+    private IReadOnlyList<SearchTerm>? _searches;
+    private bool _editing;
+    private Book? _pending;
+    private bool _deleting;
+
+    private string _input = "";
+    private bool _adding;
+    private string? _message;
+    private bool _ok;
+
+    private int Every => Math.Max(1, Options.EveryNPosts);
+
+    private int SourceCount => (_channels?.Count ?? 0) + (_searches?.Count ?? 0);
+
+    private int PausedCount => _books?.Count(b => b.IsArchived) ?? 0;
+
+    private bool CanEdit => _tab == Tab.Books ? _books is { Count: > 0 } : SourceCount > 0;
+
+    private string Selected(Tab tab) => (_tab == tab) ? "true" : "false";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _categories = await CategoryService.GetCategoriesAsync();
+        await LoadAsync();
+        await LoadSourcesAsync();
+    }
+
+    // ---------------------------------------------------------------- categories
+
+    private Category? Category(int? id) =>
+        id is { } value ? _categories.FirstOrDefault(c => c.Id == value) : null;
+
+    private void SetFilter(int filter) => _filter = filter;
+
+    private bool Matches(int? categoryId) => _filter switch
+    {
+        AllFilter => true,
+        LooseFilter => categoryId is null,
+        var id => categoryId == id,
+    };
+
+    private List<Book> VisibleBooks => (_books ?? Array.Empty<Book>()).Where(b => Matches(b.CategoryId)).ToList();
+    private List<Channel> VisibleChannels => (_channels ?? Array.Empty<Channel>()).Where(c => Matches(c.CategoryId)).ToList();
+    private List<SearchTerm> VisibleSearches => (_searches ?? Array.Empty<SearchTerm>()).Where(s => Matches(s.CategoryId)).ToList();
+
+    private int TotalInTab => _tab == Tab.Books ? _books?.Count ?? 0 : SourceCount;
+
+    private int CountIn(int categoryId) => _tab == Tab.Books
+        ? _books?.Count(b => b.CategoryId == categoryId) ?? 0
+        : (_channels?.Count(c => c.CategoryId == categoryId) ?? 0) +
+          (_searches?.Count(s => s.CategoryId == categoryId) ?? 0);
+
+    private int LooseInTab => _tab == Tab.Books
+        ? _books?.Count(b => b.CategoryId is null) ?? 0
+        : (_channels?.Count(c => c.CategoryId is null) ?? 0) +
+          (_searches?.Count(s => s.CategoryId is null) ?? 0);
+
+    private Task FileBook(Book b) => Open("book", b.Id, b.Title, b.CategoryId);
+    private Task FileChannel(Channel c) => Open("channel", c.Id, c.Title, c.CategoryId);
+    private Task FileSearch(SearchTerm s) => Open("search", s.Id, s.Query, s.CategoryId);
+
+    private async Task Open(string kind, int id, string label, int? current)
+    {
+        if (_picker is null) return;
+        _filing = (kind, id);
+        await _picker.OpenAsync(label, current);
+    }
+
+    private async Task OnCategoryPicked(int? categoryId)
+    {
+        if (_filing is not { } target) return;
+
+        switch (target.Kind)
+        {
+            case "book": await CategoryService.AssignBookAsync(target.Id, categoryId); break;
+            case "channel": await CategoryService.AssignChannelAsync(target.Id, categoryId); break;
+            case "search": await CategoryService.AssignSearchAsync(target.Id, categoryId); break;
+        }
+
+        _filing = null;
+
+        // The picker can have created a category, and the assignment changes every count on the
+        // rail — so the whole lot is re-read rather than patched.
+        _categories = await CategoryService.GetCategoriesAsync();
+        await LoadAsync();
+        await LoadSourcesAsync();
+        DropStaleFilter();
+    }
+
+    /// <summary>
+    /// A filter can outlive what it selects: file the last loose book and the Uncategorised chip
+    /// goes, leaving the tab filtered by a chip that's no longer on it.
+    /// </summary>
+    private void DropStaleFilter()
+    {
+        var live = _filter == AllFilter
+            || (_filter == LooseFilter && LooseInTab > 0)
+            || _categories.Any(c => c.Id == _filter);
+
+        if (!live) _filter = AllFilter;
+    }
+
+    private async Task LoadSourcesAsync()
+    {
+        _channels = await Channels.GetChannelsAsync();
+        _searches = await Searches.GetSearchesAsync();
+    }
+
+    private async Task LoadAsync() => _books = await Books.GetBooksAsync();
+
+    /// <summary>
+    /// Covers arrive after the shelf does. The first pass over a book pays a PDF render, so the
+    /// grid paints on its gradients straight away and each cover replaces one as it lands, rather
+    /// than holding the whole screen back. Cached to disk, so it's a one-time cost per book.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_fetchingCovers || _books is null) return;
+
+        var missing = _books.Where(b => !_covers.ContainsKey(b.Id)).ToList();
+        if (missing.Count == 0) return;
+
+        _fetchingCovers = true;
+        try
+        {
+            foreach (var b in missing)
+            {
+                _covers[b.Id] = await PageImages.GetCoverDataUriAsync(b.Id, b.FilePath);
+                StateHasChanged();
+            }
+        }
+        finally
+        {
+            _fetchingCovers = false;
+        }
+    }
+
+    private void Switch(Tab tab)
+    {
+        _tab = tab;
+        _editing = false;
+        _message = null;
+
+        // The chips mean different counts on each tab, and a category with books but no sources
+        // would leave the other tab looking empty for no stated reason.
+        _filter = AllFilter;
+    }
+
+    private void ToggleEdit() => _editing = !_editing;
+
+    // ---------------------------------------------------------------- channels
+
+    private void SetMode(AddMode mode)
+    {
+        if (_adding) return;
+        _mode = mode;
+        _message = null;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AddSource();
+    }
+
+    private async Task AddSource()
+    {
+        if (_adding || string.IsNullOrWhiteSpace(_input)) return;
+
+        _adding = true;
+        _message = null;
+        StateHasChanged();
+
+        // Both paths verify against YouTube before storing anything: a channel has to exist, and
+        // a search has to actually return shorts.
+        if (_mode == AddMode.Channel)
+        {
+            var result = await Channels.AddAsync(_input);
+            _ok = result.Ok;
+            _message = result.Ok ? $"Following {result.Channel!.Title}." : result.Message;
+        }
+        else
+        {
+            var result = await Searches.AddAsync(_input);
+            _ok = result.Ok;
+            _message = result.Message;
+        }
+
+        if (_ok)
+        {
+            _input = "";
+            await LoadSourcesAsync();
+        }
+
+        _adding = false;
+        StateHasChanged();
+    }
+
+    private async Task Unfollow(Channel channel)
+    {
+        await Channels.UnfollowAsync(channel.Id);
+        await AfterRemovalAsync();
+    }
+
+    private async Task RemoveSearch(SearchTerm term)
+    {
+        await Searches.RemoveAsync(term.Id);
+        await AfterRemovalAsync();
+    }
+
+    private async Task AfterRemovalAsync()
+    {
+        await LoadSourcesAsync();
+        _message = null;
+        if (SourceCount == 0) _editing = false;
+    }
+
+    private static string Initial(string title) =>
+        string.IsNullOrWhiteSpace(title) ? "?" : title.Trim()[..1].ToUpperInvariant();
+
+    // ---------------------------------------------------------------- books
+
+    private void Cancel()
+    {
+        if (_deleting) return;
+        _pending = null;
+    }
+
+    private async Task RemoveAsync()
+    {
+        if (_pending is null) return;
+        _deleting = true;
+        try
+        {
+            await Books.DeleteBookAsync(_pending.Id);
+            await LoadAsync();
+        }
+        finally
+        {
+            _deleting = false;
+            _pending = null;
+            if (_books is { Count: 0 }) _editing = false;
+        }
+    }
+
+    private async Task ToggleEnabled(Book book)
+    {
+        // Re-read rather than flipping the local copy: the service shares this scope's DbContext,
+        // so the entity it saves is the very one in _books. Flipping it here as well would put it
+        // straight back — and re-reading stays correct if that ever stops being true.
+        await Books.SetEnabledAsync(book.Id, book.IsArchived);
+        await LoadAsync();
+    }
+
+    private static string Grad(string hex) => $"linear-gradient(150deg, {hex}, #0d0d14)";
+
+    private static string Meta(Book b) =>
+        b.IsArchived ? "Paused" : $"{b.PageCount} pages · {Pct(b)}%";
+
+    private static int Pct(Book b) =>
+        b.PageCount <= 0 ? 0 : (int)Math.Round(100.0 * Math.Min(b.PagesSeen, b.PageCount) / b.PageCount);
+}

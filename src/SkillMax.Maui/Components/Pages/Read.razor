@@ -1,0 +1,299 @@
+@* The chapter reader. Same extracted blocks the cards use, minus the splitting — this is what the
+   text looks like when nothing has to fit a 4:5 box. Opens on the page you arrived from. *@
+@page "/read/{BookId:int}/{Page:int}"
+@layout ReaderLayout
+@inject IBookService Books
+@inject IChapterService Chapters
+@inject IPageTextService PageText
+@inject IPageImageService PageImages
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="reader">
+    <div class="rbar @(_chromeHidden ? "hidden" : "")">
+        <button @onclick="Back" aria-label="@(FromContents ? "Back to contents" : "Back to feed")">
+            <Icon Name="chevron-left" Size="21" />
+        </button>
+        <span class="ttl">
+            @(_chapter?.Title ?? _book?.Title ?? "Reading")
+            @if (_chapter is not null)
+            {
+                <span>&nbsp;&middot; p@(_chapter.StartPage)&ndash;@(_chapter.EndPage)</span>
+            }
+        </span>
+        <button @onclick="() => _chromeHidden = !_chromeHidden" aria-label="@(_chromeHidden ? "Show bar" : "Hide bar")">
+            <Icon Name="@(_chromeHidden ? "eye" : "eye-off")" Size="19" />
+        </button>
+    </div>
+
+    <div class="rprog"><i id="sm-rprog"></i></div>
+
+    <div class="rbody" id="sm-rbody" @ref="_bodyRef">
+        @if (_loading && _sections.Count == 0)
+        {
+            <div class="rloading">
+                <div class="spin"></div>
+                <div class="rl-t">Setting the chapter</div>
+                <div class="rl-bar" role="progressbar" aria-valuenow="@Percent" aria-valuemin="0"
+                     aria-valuemax="100" aria-label="Setting the chapter">
+                    <i style="width:@(Percent)%"></i>
+                </div>
+                <div class="rl-n">
+                    @Percent%
+                    @if (_loadTotal > 0)
+                    {
+                        <span>&middot; page @_loadDone of @_loadTotal</span>
+                    }
+                </div>
+            </div>
+        }
+        else if (_sections.Count == 0)
+        {
+            @* Two different failures wear the same empty body: no chapter could be located at all,
+               or one was but its pages carry no text. Say which. *@
+            <div class="rloading">
+                <div class="rl-t">
+                    @(_chapter is null
+                        ? "Couldn't work out where this chapter starts."
+                        : "This page has no readable text.")
+                </div>
+            </div>
+        }
+        else
+        {
+            @* Loop variables are deliberately not named "section" or "page": Razor reads @section
+               and @page as directives and the file stops compiling. *@
+            @foreach (var sec in _sections)
+            {
+                <div class="chead">
+                    <div class="k">@(sec.Chapter.Label ?? "Chapter")</div>
+                    <h2>@sec.Chapter.ShortTitle</h2>
+                    <div class="meta">@sec.Chapter.PageCount pages &middot; p@(sec.Chapter.StartPage)&ndash;@(sec.Chapter.EndPage)</div>
+                </div>
+
+                <div class="rtext">
+                    @foreach (var pg in sec.Pages)
+                    {
+                        @* The anchor sits above the seam on purpose: landing on it has to leave the
+                           "from your feed" marker in view, not scrolled under the bar. *@
+                        <div id="@Anchor(pg.Page)" class="anchor"></div>
+
+                        @if (pg.Page != sec.Chapter.StartPage)
+                        {
+                            <div class="seam @(pg.Page == Page ? "here" : "")">
+                                <span class="l"></span>
+                                <span class="n">@pg.Page</span>
+                                @if (pg.Page == Page)
+                                {
+                                    <span class="came">@LandedNote</span>
+                                }
+                                <span class="l"></span>
+                            </div>
+                        }
+
+                        @* A thin page keeps its words even though a card would show the render — only
+                           a page with no text at all falls back to the image here. *@
+                        @if (pg.Content.Blocks.Count == 0)
+                        {
+                            <div class="rfig">
+                                @if (pg.Image is null)
+                                {
+                                    <span class="rfig-note">Page @pg.Page</span>
+                                }
+                                else
+                                {
+                                    <img src="@pg.Image" alt="Page @pg.Page of @_book?.Title" />
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            @foreach (var block in pg.Content.Blocks)
+                            {
+                                switch (block.Kind)
+                                {
+                                    case PageBlockKind.Heading:
+                                        <h3>@block.Text</h3>
+                                        break;
+                                    case PageBlockKind.ListItem:
+                                        <p class="li">@block.Text</p>
+                                        break;
+                                    case PageBlockKind.Figure:
+                                        <div class="rfig">
+                                            @if (pg.Image is null)
+                                            {
+                                                <span class="rfig-note">Figure</span>
+                                            }
+                                            else
+                                            {
+                                                <img src="@pg.Image" alt="@FigureAlt(block.Text, pg.Page)" />
+                                            }
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(block.Text))
+                                        {
+                                            <p class="rfigcap">@block.Text</p>
+                                        }
+                                        break;
+                                    default:
+                                        <p>@block.Text</p>
+                                        break;
+                                }
+                            }
+                        }
+                    }
+                </div>
+            }
+
+            <div class="rend">
+                @if (_loadingMore)
+                {
+                    <div class="spin spin--sm"></div>
+                    <div class="rl-bar" role="progressbar" aria-valuenow="@Percent" aria-valuemin="0"
+                         aria-valuemax="100" aria-label="Loading the next chapter">
+                        <i style="width:@(Percent)%"></i>
+                    </div>
+                    <span class="rend-note">@Percent% &middot; page @_loadDone of @_loadTotal</span>
+                }
+                else if (_next is not null)
+                {
+                    <button class="rnext" @onclick="ContinueAsync">
+                        Continue to @(_next.Label ?? _next.ShortTitle)
+                        <Icon Name="chevron-right" Size="16" />
+                    </button>
+                    <span class="rend-note">@_next.ShortTitle</span>
+                }
+                else
+                {
+                    <span class="rend-note">End of the book</span>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public int BookId { get; set; }
+    [Parameter] public int Page { get; set; }
+
+    /// <summary>Where the reader was opened from, so backing out returns there.</summary>
+    [SupplyParameterFromQuery(Name = "back")] public string? From { get; set; }
+
+    private bool FromContents => string.Equals(From, "book", StringComparison.Ordinal);
+
+    private string LandedNote => FromContents ? "you started here" : "from your feed";
+
+    private sealed record ReaderPage(int Page, PageContent Content, string? Image);
+    private sealed record Section(ChapterRef Chapter, List<ReaderPage> Pages);
+
+    private Book? _book;
+    private ChapterRef? _chapter;
+    private ChapterRef? _next;
+    private readonly List<Section> _sections = new();
+    private bool _loading, _loadingMore, _chromeHidden, _needsLand;
+    private int _loadedFor = -1;
+    private int _loadDone, _loadTotal;
+    private ElementReference _bodyRef;
+
+    /// <summary>
+    /// Real progress, not a guess: the chapter is assembled a page at a time, and the first pass over
+    /// a book pays a PDF parse for each one, so this number actually moves.
+    /// </summary>
+    private int Percent => _loadTotal <= 0 ? 0 : (int)Math.Round(100.0 * _loadDone / _loadTotal);
+
+    private static string Anchor(int page) => $"sm-pg{page}";
+
+    private static string FigureAlt(string caption, int page) =>
+        string.IsNullOrWhiteSpace(caption) ? $"Figure on page {page}" : caption;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Navigating between chapters reuses this component; reload only on a real change.
+        var key = BookId * 100_000 + Page;
+        if (_loadedFor == key) return;
+        _loadedFor = key;
+
+        _sections.Clear();
+        _next = null;
+        _chapter = null;
+        _loading = true;
+
+        _book = await Books.GetBookAsync(BookId);
+        if (_book is null)
+        {
+            _loading = false;
+            return;
+        }
+
+        _chapter = await Chapters.GetForPageAsync(BookId, _book.FilePath, Page - 1);
+        if (_chapter is not null)
+        {
+            _sections.Add(new Section(_chapter, await LoadPagesAsync(_chapter)));
+            _next = await Chapters.GetNextAsync(BookId, _book.FilePath, _chapter);
+        }
+
+        _loading = false;
+        _needsLand = true;
+    }
+
+    private async Task<List<ReaderPage>> LoadPagesAsync(ChapterRef chapter)
+    {
+        var pages = new List<ReaderPage>(chapter.PageCount);
+
+        _loadDone = 0;
+        _loadTotal = chapter.PageCount;
+        StateHasChanged();
+
+        for (var p = chapter.StartPage; p <= chapter.EndPage; p++)
+        {
+            var content = await PageText.GetPageContentAsync(BookId, _book!.FilePath, p - 1);
+
+            // A render is needed for a figure, or for a page with no readable text at all — not
+            // merely for a thin one, whose words the reader can flow.
+            var needsImage = content.Blocks.Count == 0 ||
+                             content.Blocks.Any(b => b.Kind == PageBlockKind.Figure);
+            var image = needsImage
+                ? await PageImages.GetPageDataUriAsync(BookId, _book.FilePath, p - 1)
+                : null;
+
+            pages.Add(new ReaderPage(p, content, image));
+
+            // Tick after each page: the panel is the only thing rendered while this runs, so the
+            // re-render costs nothing and the bar tracks the work honestly.
+            _loadDone++;
+            StateHasChanged();
+        }
+
+        return pages;
+    }
+
+    private async Task ContinueAsync()
+    {
+        if (_next is null || _book is null || _loadingMore) return;
+
+        _loadingMore = true;
+        var appended = _next;
+        var pages = await LoadPagesAsync(appended);
+
+        _sections.Add(new Section(appended, pages));
+        _next = await Chapters.GetNextAsync(BookId, _book.FilePath, appended);
+        _loadingMore = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_needsLand) return;
+        _needsLand = false;
+
+        // Land on the page the feed sent us to, with the chapter so far above it, and start the
+        // progress rail. Both are DOM-only concerns.
+        try { await JS.InvokeVoidAsync("smReader.open", _bodyRef, Anchor(Page)); }
+        catch (JSDisconnectedException) { /* view torn down mid-load */ }
+    }
+
+    private void Back()
+    {
+        // Deliberately a route rather than history: the reader is a destination, not a modal. Which
+        // route is whichever surface sent us — the feed, or the book's contents.
+        Nav.NavigateTo(FromContents ? $"/book/{BookId}" : "/");
+    }
+}

@@ -1,0 +1,26 @@
+.shell {
+    position: relative;
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100dvh;
+    background: var(--bg);
+}
+
+.content {
+    min-height: 100dvh;
+    padding-bottom: 76px; /* clears the fixed tab bar */
+}
+
+.init-error {
+    text-align: center;
+    padding: 20vh 20px 0;
+    opacity: .7;
+}
+
+/* Frame the phone column on wide (desktop inner-loop) windows. */
+@media (min-width: 520px) {
+    .shell {
+        border-left: 1px solid var(--line);
+        border-right: 1px solid var(--line);
+    }
+}

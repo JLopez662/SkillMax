@@ -1,0 +1,75 @@
+.scrim {
+    position: fixed; inset: 0; z-index: 60; padding: 22px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, .62); animation: pick-scrim .18s ease both;
+}
+@keyframes pick-scrim { from { opacity: 0; } to { opacity: 1; } }
+
+/* Centred rather than a bottom sheet: creating a category opens the soft keyboard, and a
+   centred dialog rides up with the shrinking viewport instead of hiding under the keys. */
+.sheet {
+    width: 100%; max-width: 340px; max-height: 84dvh; overflow-y: auto;
+    padding: 20px 18px 16px; border-radius: 22px;
+    background: var(--elev); border: 1px solid var(--line);
+    display: flex; flex-direction: column; gap: 10px;
+    animation: pick-in .2s cubic-bezier(.2, .8, .2, 1) both;
+}
+@keyframes pick-in { from { opacity: 0; transform: scale(.95); } to { opacity: 1; transform: none; } }
+
+.sheet h3 { font-size: 17px; font-weight: 800; }
+.sheet__sub { margin-top: -4px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+
+.opt {
+    display: flex; align-items: center; gap: 11px; width: 100%;
+    padding: 12px; border-radius: 14px; cursor: pointer;
+    border: 1px solid transparent; background: var(--surface);
+    color: var(--text); font-family: var(--font); font-size: 14px; font-weight: 600; text-align: left;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.opt.on { border-color: var(--ig-blue); }
+.opt .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); flex: none; }
+.opt .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opt .tick { color: var(--ig-blue); display: grid; flex: none; }
+
+/* Uncategorised is a place, not an absence — so it gets a ring where a colour would be. */
+.opt--none .dot { background: none; box-shadow: inset 0 0 0 1.5px var(--faint); }
+
+.mk { display: flex; gap: 8px; align-items: center; }
+.mk input {
+    flex: 1; min-width: 0; padding: 11px 13px;
+    background: var(--field); color: var(--text);
+    border: 1px solid var(--line); border-radius: 13px;
+    font-family: var(--font); font-size: 14px;
+}
+.mk input::placeholder { color: var(--faint); }
+
+.rnd {
+    width: 38px; height: 38px; flex: none; padding: 0; display: grid; place-items: center;
+    border: 1px solid var(--line); border-radius: 50%; cursor: pointer;
+    background: var(--surface); color: var(--text);
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.rnd--on { background: var(--text); color: var(--bg); border-color: transparent; }
+.rnd:disabled { opacity: .45; cursor: default; }
+
+.sheet__new {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 11px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--surface); color: var(--text);
+    font-family: var(--font); font-size: 12.5px; font-weight: 650;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+
+.sheet__acts { display: flex; gap: 9px; margin-top: 4px; }
+.pbtn {
+    flex: 1; padding: 13px; border: 0; border-radius: 999px; cursor: pointer;
+    font-family: var(--font); font-size: 14px; font-weight: 700;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.pbtn:disabled { opacity: .5; cursor: default; }
+.pbtn.go { background: var(--ig-blue); color: #fff; }
+.pbtn.ghost { background: var(--surface); color: var(--text); }
+
+@media (prefers-reduced-motion: reduce) {
+    .scrim, .sheet { animation: none; }
+}

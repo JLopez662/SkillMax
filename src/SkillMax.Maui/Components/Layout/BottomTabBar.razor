@@ -1,0 +1,56 @@
+@* Instagram-style bottom tab bar with a gradient create (+) button in the middle.
+   Rendered once by MainLayout; highlight follows the current route. *@
+@implements IDisposable
+@inject NavigationManager Nav
+
+<nav class="tabbar" role="navigation" aria-label="Primary">
+    <button class="tab @(Is("/") ? "on" : "")" type="button" @onclick='() => Go("/")' aria-label="Feed">
+        <Icon Name="home" />
+    </button>
+    <button class="tab @(Is("/library") ? "on" : "")" type="button" @onclick='() => Go("/library")' aria-label="Library">
+        <Icon Name="grid" />
+    </button>
+    <button class="tab tab--fab" type="button" @onclick='() => Go("/import")' aria-label="Import a PDF">
+        <span class="fab"><Icon Name="plus" StrokeWidth="2.4" /></span>
+    </button>
+    <button class="tab @(Is("/saved") ? "on" : "")" type="button" @onclick='() => Go("/saved")' aria-label="Saved">
+        <Icon Name="bookmark" />
+    </button>
+    <button class="tab @(Is("/profile") ? "on" : "")" type="button" @onclick='() => Go("/profile")' aria-label="Profile">
+        <Icon Name="user" />
+    </button>
+</nav>
+
+@code {
+    private string _path = "/";
+
+    protected override void OnInitialized()
+    {
+        _path = Norm(Nav.Uri);
+        Nav.LocationChanged += OnLoc;
+    }
+
+    private void OnLoc(object? sender, LocationChangedEventArgs e)
+    {
+        _path = Norm(e.Location);
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLoc;
+
+    private string Norm(string uri)
+    {
+        var rel = Nav.ToBaseRelativePath(uri);
+        var q = rel.IndexOf('?');
+        if (q >= 0) rel = rel.Substring(0, q);
+        return "/" + rel.TrimStart('/');
+    }
+
+    private bool Is(string p) => string.Equals(_path, p, StringComparison.OrdinalIgnoreCase);
+
+    private void Go(string p)
+    {
+        _path = p;
+        Nav.NavigateTo(p);
+    }
+}

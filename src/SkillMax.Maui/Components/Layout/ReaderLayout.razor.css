@@ -1,0 +1,15 @@
+.shell {
+    position: relative;
+    max-width: 480px;
+    margin: 0 auto;
+    height: 100dvh;
+    overflow: hidden;
+    background: var(--bg);
+}
+
+@media (min-width: 520px) {
+    .shell {
+        border-left: 1px solid var(--line);
+        border-right: 1px solid var(--line);
+    }
+}

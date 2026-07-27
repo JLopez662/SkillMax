@@ -1,0 +1,11 @@
+<Router AppAssembly="@typeof(MauiProgram).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="@typeof(MainLayout)">
+            <p style="text-align:center;padding:20vh 16px 0;opacity:.7;">Nothing here.</p>
+        </LayoutView>
+    </NotFound>
+</Router>

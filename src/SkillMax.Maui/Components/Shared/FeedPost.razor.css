@@ -1,0 +1,211 @@
+/* The post chrome (header, action row, caption) is shared with ShortPost and lives in theme.css.
+   What's here is this post's media: the page carousel. */
+
+/* ---------- the carousel: one page, one or more slides ---------- */
+.media { position: relative; }
+
+.slides {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+.slides::-webkit-scrollbar { display: none; }
+
+.slide {
+    flex: 0 0 100%;
+    scroll-snap-align: center;
+    scroll-snap-stop: always;
+    aspect-ratio: 4 / 5;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+/* Grain, as a filter rather than a bitmap: a few hundred bytes, no asset to ship. */
+.slide::after {
+    content: "";
+    position: absolute; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: var(--slide-grain, .05);
+    mix-blend-mode: soft-light;
+    pointer-events: none;
+}
+.slide--loading { width: 100%; }
+
+.slide-body {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    /* The bottom padding reserves the source strip, so the fit pass can't hand back a slide
+       whose last line lands on top of it. */
+    padding: 28px 28px 54px;
+    font-family: var(--serif);
+    font-size: var(--fs, 19px);
+    line-height: 1.52;
+    color: var(--slide-ink, var(--text));
+    overflow: hidden;
+}
+.slide-body.center { justify-content: center; }
+
+/* The measured element: its natural height is what cards.js compares against the card. */
+.flow { display: flex; flex-direction: column; gap: var(--gap, 12px); }
+
+.slide h2 {
+    font-family: var(--serif);
+    font-size: calc(var(--fs, 19px) * 1.34);
+    line-height: 1.16;
+    letter-spacing: -.01em;
+    font-weight: 600;
+    text-wrap: balance;
+}
+.slide .li { padding-left: 2px; font-variant-numeric: tabular-nums; }
+.slide .cont {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--slide-dim, var(--muted));
+}
+
+/* A figure or an unreadable page keeps the rendered PDF. */
+.slide--render .slide-body { padding-bottom: 46px; gap: 10px; }
+.figbox {
+    position: relative;
+    flex: 1;
+    border: 1px solid var(--slide-rule, var(--line));
+    border-radius: 4px;
+    overflow: hidden;
+    /* a lift, not a neutral tint — every ground in the pool is dark now */
+    background: rgba(255, 255, 255, .07);
+    display: grid;
+    place-items: center;
+}
+.figbox img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.figcap {
+    font-size: calc(var(--fs, 19px) * .72);
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--slide-dim, var(--muted));
+}
+
+.slide-foot {
+    position: absolute;
+    inset: auto 0 0 0;
+    z-index: 1;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 28px 16px;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--slide-dim, var(--muted));
+}
+/* the chapter card at the end of the carousel */
+.slide--cta .slide-body { justify-content: center; align-items: center; gap: 14px; text-align: center; padding-bottom: 46px; }
+.cta-eyebrow {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--slide-dim, var(--muted));
+}
+.cta-btn {
+    font-family: var(--font); font-size: 14px; font-weight: 700;
+    padding: 12px 22px; border-radius: 999px; border: 0;
+    background: var(--ig-blue); color: #fff; cursor: pointer;
+}
+.cta-sub { font-family: var(--font); font-size: 12px; color: var(--slide-dim, var(--muted)); max-width: 24ch; }
+
+/* Says the two are alternatives rather than a stack of things to get through. */
+.cta-or {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--slide-dim, var(--muted)); opacity: .75;
+}
+
+/* Clear, not coloured: the slide's background is never the same twice, so this borrows the
+   ink and hairline the background brought with it rather than naming a colour of its own. */
+.cta-ai {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--font); font-size: 13px; font-weight: 650;
+    padding: 11px 18px; border-radius: 999px; cursor: pointer;
+    background: transparent;
+    border: 1px solid var(--slide-rule, rgba(255, 255, 255, .25));
+    color: var(--slide-ink, var(--text));
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.cta-ai:disabled { opacity: .55; cursor: default; }
+.cta-ai ::deep .sm-ico { flex: none; }
+
+.slide-foot span { white-space: nowrap; }
+/* The book title gives way; the page number never does — it's the half that tells you where you
+   are, and a filename-derived title is long enough to squeeze it out otherwise. */
+.slide-foot > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.slide-foot > span:last-child { flex: none; }
+.slide-foot .rule { height: 1px; flex: 1; margin: 0 10px; background: var(--slide-rule, var(--line)); }
+
+.count {
+    position: absolute; top: 12px; right: 12px; z-index: 2;
+    padding: 3px 9px; border-radius: 999px;
+    background: rgba(0, 0, 0, .55); color: #fff;
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    backdrop-filter: blur(6px);
+}
+
+/* The chat handoff: the only action on the post that leaves the app, so the only one that
+   isn't the same white as the rest of the row. */
+.acts .ai { color: var(--ig-blue); }
+.acts .ai:disabled { opacity: .5; cursor: default; }
+
+/* Sits over the bottom of the media — the reader is on their way out of the app when it appears,
+   so it must not move anything under their thumb. */
+.toast {
+    position: absolute;
+    left: 12px; right: 12px; bottom: 12px;
+    z-index: 3;
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 11px; border-radius: 10px;
+    background: rgba(20, 20, 22, .92); border: 1px solid var(--line);
+    color: #fff; font-family: var(--font); font-size: 12px; line-height: 1.35;
+    backdrop-filter: blur(6px);
+    animation: toast-in .18s ease-out;
+}
+.toast .sm-ico { flex: none; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.dots { display: flex; justify-content: center; gap: 4px; padding: 8px 0 0; }
+.dots i {
+    width: 5.5px; height: 5.5px; border-radius: 50%;
+    background: var(--muted); opacity: .4;
+    transition: opacity .2s, background .2s;
+}
+.dots i.on { background: var(--ig-blue); opacity: 1; }
+
+.shim {
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, rgba(255,255,255,.04), rgba(255,255,255,.10), rgba(255,255,255,.04));
+    background-size: 200% 100%; animation: shim 1.2s linear infinite;
+}
+@keyframes shim { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+    .shim { animation: none; }
+    .dots i { transition: none; }
+    .toast { animation: none; }
+}
+
+/* the chapter row under the caption */
+.chapline {
+    display: flex; align-items: center; gap: 7px;
+    margin: 7px 13px 0; padding: 7px 10px;
+    width: calc(100% - 26px);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    font-family: var(--font); font-size: 12.5px; color: var(--text);
+    text-align: left; cursor: pointer;
+}
+.chapline:hover { background: var(--surface-2); }
+.chapline .ic { color: var(--ig-blue); display: inline-flex; flex: none; }
+.chapline .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chapline .t b { font-weight: 600; }
+.chapline .arw { margin-left: auto; flex: none; color: var(--muted); display: inline-flex; }

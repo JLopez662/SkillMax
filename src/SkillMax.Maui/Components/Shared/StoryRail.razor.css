@@ -1,0 +1,117 @@
+/* The rail sits under the topbar and scrolls away with the feed. */
+.rail {
+    display: flex;
+    gap: 14px;
+    padding: 12px 14px 13px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    border-bottom: 1px solid var(--sep);
+    scroll-snap-type: x proximity;
+}
+
+.rail::-webkit-scrollbar { display: none; }
+
+.story {
+    flex: none;
+    width: 68px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    scroll-snap-align: start;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Gradient ring = this channel hasn't been round today. Flat --line = it has. */
+.ring {
+    position: relative;
+    width: 66px;
+    height: 66px;
+    border-radius: 50%;
+    padding: 2.5px;
+    background: var(--ig-grad);
+    transition: transform .16s cubic-bezier(.2, .8, .2, 1);
+}
+
+.story:active .ring { transform: scale(.94); }
+.story[data-seen="1"] .ring { background: var(--line); }
+
+/* The disc the picture fills edge to edge. The only thing between it and the gradient is a
+   hairline of page background, so the ring reads as a ring rather than a frame.
+   That hairline is a border, not padding, on purpose: an absolutely positioned child is laid
+   out against the padding box, so padding here would not inset the picture at all — a border
+   would, and then `inset: 0` below means exactly "fill the disc". overflow clips both layers
+   to the circle, so neither needs its own radius. */
+.inner {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 2px solid var(--bg);
+    border-radius: 50%;
+    overflow: hidden;
+}
+
+/* Both layers fill the disc. The picture is second in the DOM, so it paints over the initial —
+   not z-index, which on a parent without its own stacking context would put the initial behind
+   .inner's background instead of behind the picture. */
+.ava {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14);
+}
+
+.ava--letter {
+    display: grid;
+    place-items: center;
+    font-size: 21px;
+    font-weight: 800;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, .4);
+}
+
+.story[data-seen="1"] .ava,
+.story[data-seen="1"] .ava--letter { opacity: .62; }
+
+/* How many shorts this channel has to offer. Nothing to say once it's been round. */
+.pip {
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+    min-width: 19px;
+    height: 19px;
+    padding: 0 4px;
+    border-radius: 999px;
+    border: 2.5px solid var(--bg);
+    background: var(--ig-red);
+    color: #fff;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 14px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.label {
+    max-width: 68px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    line-height: 1.2;
+    color: var(--text);
+}
+
+.story[data-seen="1"] .label { color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+    .ring { transition: none; }
+}

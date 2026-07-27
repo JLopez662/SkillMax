@@ -1,0 +1,62 @@
+.pw { padding: 12px 14px 24px; display: flex; flex-direction: column; gap: 10px; }
+
+.pw__lede { font-size: 13px; line-height: 1.5; color: var(--muted); }
+.pw__lede .sm-ico { width: 14px; height: 14px; color: var(--ig-blue); vertical-align: -2px; }
+
+.pw__ta {
+    width: 100%; resize: vertical; min-height: 220px;
+    padding: 12px; border: 1px solid var(--line); border-radius: 12px;
+    background: var(--field); color: var(--text);
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+}
+.pw__ta:focus { outline: none; border-color: var(--ig-blue); }
+
+.pw__row { display: flex; align-items: center; gap: 8px; }
+.pw__count { font-family: var(--mono); font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.pw__count.near { color: var(--ig-red); }
+.pw__msg { font-size: 12.5px; color: var(--ig-blue); }
+
+.pw__reset, .pw__save {
+    border: 0; cursor: pointer; font-size: 13px; font-weight: 650;
+    padding: 9px 16px; border-radius: 10px;
+}
+.pw__reset { margin-left: auto; background: var(--surface-2); color: var(--text); }
+.pw__save { background: var(--ig-blue); color: #fff; }
+.pw__reset:disabled, .pw__save:disabled { opacity: .45; cursor: default; }
+
+.pw__warn {
+    padding: 9px 11px; border-radius: 10px;
+    background: var(--surface); border: 1px solid var(--line);
+    font-size: 12.5px; line-height: 1.45; color: var(--ig-red);
+}
+
+.pw__h { font-size: 13px; font-weight: 700; color: var(--text); padding-top: 6px; }
+
+.pw__tokens { display: flex; flex-direction: column; gap: 6px; list-style: none; }
+.pw__tokens li { display: flex; align-items: baseline; gap: 9px; font-size: 12.5px; }
+.pw__tokens li span { color: var(--muted); min-width: 0; }
+
+.pw__note { font-size: 12px; line-height: 1.5; color: var(--muted); }
+
+code {
+    font-family: var(--mono); font-size: 11.5px;
+    padding: 2px 5px; border-radius: 6px;
+    background: var(--surface-2); color: var(--text);
+    white-space: nowrap;
+}
+
+.pw__segs { display: flex; gap: 4px; padding: 3px; background: var(--surface-2); border-radius: 11px; }
+.pw__seg {
+    flex: 1; padding: 8px 6px; border: 0; border-radius: 8px; cursor: pointer;
+    background: none; color: var(--muted); font-family: var(--font); font-size: 12px; font-weight: 650;
+}
+.pw__seg.on { background: var(--bg); color: var(--text); }
+
+/* The composed prompt, as the chat app will receive it — wrapped, never scrolled sideways,
+   because the line breaks are part of what's being previewed. */
+.pw__prev {
+    padding: 12px; border: 1px solid var(--line); border-radius: 12px;
+    background: var(--elev); color: var(--muted);
+    font-family: var(--mono); font-size: 11.5px; line-height: 1.55;
+    white-space: pre-wrap; overflow-wrap: anywhere;
+}

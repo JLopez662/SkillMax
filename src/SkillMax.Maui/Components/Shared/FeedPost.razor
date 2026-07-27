@@ -1,0 +1,421 @@
+@* One post = one page. A page that doesn't fit a single card becomes several slides in this
+   post's carousel; the type size on each is settled by measuring (see wwwroot/js/cards.js). *@
+@inject IPageTextService PageText
+@inject IPageImageService PageImages
+@inject ISavedCardService SavedCards
+@inject IUnderstoodService Understood
+@inject IChapterService Chapters
+@inject IAiPromptService AiPrompts
+@inject IAiHandoffService ChatHandoff
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<article class="post">
+    <div class="post-top">
+        <div class="ava" style="background:@Grad"><span>@Initial</span></div>
+        <div class="post-id">
+            <span class="post-name">@Card.Handle</span>
+            @if (!string.IsNullOrWhiteSpace(Card.Author))
+            {
+                <span class="post-sub">@Card.Author</span>
+            }
+        </div>
+        <button class="post-more" aria-label="More"><Icon Name="more-horizontal" /></button>
+    </div>
+
+    <div class="media" @ref="_media">
+        @if (_slides is null)
+        {
+            <div class="slide slide--loading" style="background:@Card.Background.Css"><div class="shim"></div></div>
+        }
+        else
+        {
+            @if (CardCount > 1)
+            {
+                <div class="count"><span class="cur">1</span>/@CardCount</div>
+            }
+
+            <div class="slides" role="group" tabindex="0"
+                 aria-label="Page @Card.PageNumber, @_slides.Count slide@(_slides.Count == 1 ? "" : "s")">
+                @foreach (var slide in _slides)
+                {
+                    <div class="slide @(slide.IsRender ? "slide--render" : "")" style="@SlideStyle">
+                        @if (slide.IsRender)
+                        {
+                            <div class="slide-body">
+                                <div class="figbox">
+                                    @if (_img is null)
+                                    {
+                                        <div class="shim"></div>
+                                    }
+                                    else
+                                    {
+                                        <img src="@_img" alt="Page @Card.PageNumber of @Card.BookTitle" />
+                                    }
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(slide.Caption))
+                                {
+                                    <p class="figcap">@slide.Caption</p>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="slide-body">
+                                <div class="flow">
+                                    @for (var i = 0; i < slide.Blocks.Count; i++)
+                                    {
+                                        var block = slide.Blocks[i];
+                                        @if (i == 0 && block.Continued)
+                                        {
+                                            <p class="cont">continued</p>
+                                        }
+                                        @switch (block.Kind)
+                                        {
+                                            case PageBlockKind.Heading:
+                                                <h2>@block.Text</h2>
+                                                break;
+                                            case PageBlockKind.ListItem:
+                                                <p class="li">@block.Text</p>
+                                                break;
+                                            default:
+                                                <p>@block.Text</p>
+                                                break;
+                                        }
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        <div class="slide-foot">
+                            <span>@Card.BookTitle</span><span class="rule"></span><span>p @Card.PageNumber</span>
+                        </div>
+                    </div>
+                }
+
+                @* The page has run out — offer the chapter it came from. Only reachable by swiping to
+                   the end, which is the point: it reads as the next step rather than a fixture. *@
+                @if (_chapter is not null)
+                {
+                    <div class="slide slide--cta" style="@SlideStyle">
+                        <div class="slide-body">
+                            <span class="cta-eyebrow">end of page @Card.PageNumber</span>
+                            <button class="cta-btn" @onclick="OpenChapter">Read this chapter</button>
+                            <span class="cta-sub">@_chapter.Title &middot; @_chapter.PageCount pages</span>
+
+                            @* The same handoff as the sparkles button, offered where the decision
+                               actually gets made — you've finished the page and you're choosing
+                               what's next. Hidden on a page with no text layer, as there'd be
+                               nothing to hand over. *@
+                            @if (_pageBlocks is { Count: > 0 })
+                            {
+                                <span class="cta-or">or</span>
+                                <button class="cta-ai" disabled="@_handingOff" @onclick="DiscussInChat">
+                                    <Icon Name="sparkles" Size="15" />
+                                    @(_handingOff ? "Copying the page…" : "Discuss it in ChatGPT")
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        @* Says where the page went. Sits over the media rather than pushing the post around,
+           because the reader is on their way out of the app when they see it. *@
+        @if (_handoff is not null)
+        {
+            <div class="toast" role="status">
+                <Icon Name="@(_handoffOk ? "check" : "x")" Size="15" />
+                <span>@_handoff</span>
+            </div>
+        }
+    </div>
+
+    @if (CardCount > 1)
+    {
+        <div class="dots">
+            @for (var i = 0; i < CardCount; i++)
+            {
+                <i></i>
+            }
+        </div>
+    }
+
+    <div class="acts">
+        <div class="acts-l">
+            @* The heart means "seen it, got it". It doesn't retire the page — it drops its weight
+               in the feed draw, so the pages that haven't landed yet come round more often. *@
+            <button class="@(_understood ? "marked" : "")"
+                    aria-label="@(_understood ? "Marked as understood" : "Mark as understood")"
+                    aria-pressed="@(_understood ? "true" : "false")" @onclick="ToggleUnderstood">
+                <Icon Name="heart" Fill="@(_understood ? "currentColor" : "none")" />
+            </button>
+            <button aria-label="Note"><Icon Name="message-circle" /></button>
+            <button aria-label="Share"><Icon Name="send" /></button>
+            @* The one action that leaves the app, so it's the one that isn't white. Absent on a page
+               with no text layer: there'd be nothing to hand over. *@
+            @if (_pageBlocks is { Count: > 0 })
+            {
+                <button class="ai" aria-label="Discuss this page in ChatGPT" disabled="@_handingOff"
+                        @onclick="DiscussInChat">
+                    <Icon Name="sparkles" />
+                </button>
+            }
+        </div>
+        <button class="acts-r @(_saved ? "on" : "")" aria-label="@(_saved ? "Saved" : "Save")" @onclick="ToggleSave">
+            <Icon Name="bookmark" Fill="@(_saved ? "currentColor" : "none")" />
+        </button>
+    </div>
+
+    <div class="likes">@Card.ProgressPct% through &middot; @Card.BookTitle</div>
+    @if (_understood)
+    {
+        <div class="marked-note"><Icon Name="check" Size="12" /> Understood &middot; comes round less often</div>
+    }
+    <div class="cap">
+        <b>@Card.Handle</b> page @Card.PageNumber
+        @if (_slides is { Count: > 1 })
+        {
+            <span class="cap-sub"> &middot; @_slides.Count slides</span>
+        }
+    </div>
+
+    @* Where the metadata already lives, so the card itself stays clean — and it names the chapter,
+       which the post never did before. *@
+    @if (_chapter is not null)
+    {
+        <button class="chapline" @onclick="OpenChapter">
+            <span class="ic"><Icon Name="book-open" Size="15" /></span>
+            <span class="t"><b>@_chapter.Title</b></span>
+            <span class="arw"><Icon Name="chevron-right" Size="14" /></span>
+        </button>
+    }
+
+    <div class="time">@TimeLabel</div>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public FeedCard Card { get; set; } = default!;
+
+    private ElementReference _media;
+    private IReadOnlyList<CardSlide>? _slides;
+
+    /// <summary>
+    /// The page's text before it was split into slides. The carousel doesn't need it, but the chat
+    /// handoff does: what gets sent is the whole page, not the slide that happens to be on screen.
+    /// </summary>
+    private IReadOnlyList<PageBlock>? _pageBlocks;
+
+    private ChapterRef? _chapter;
+    private string? _img;
+    private bool _saved;
+    private bool _understood;
+    private bool _handingOff;
+    private bool _handoffOk;
+    private string? _handoff;
+    private int _handoffSeq;
+    private bool _needsFit;
+    private bool _needsLoad;
+    private double _cardWidth = PageSplitter.ReferenceWidth;
+    private int _loadedBook = -1, _loadedPage = -1;
+
+    /// <summary>Slides in the carousel, including the chapter card when there is one.</summary>
+    private int CardCount => (_slides?.Count ?? 0) + (_chapter is not null ? 1 : 0);
+
+    private string Grad => $"linear-gradient(150deg, {Card.ColorHex}, #0d0d14)";
+    private string Initial => string.IsNullOrWhiteSpace(Card.BookTitle) ? "?" : Card.BookTitle.Trim()[..1].ToUpperInvariant();
+    private string TimeLabel => Card.PageCount > 0 ? $"Page {Card.PageNumber} of {Card.PageCount}" : $"Page {Card.PageNumber}";
+
+    /// <summary>
+    /// The background's ink, hairline and grain travel with it as custom properties, so a slide never
+    /// has to guess which text colour its background can carry.
+    /// </summary>
+    private string SlideStyle =>
+        $"background:{Card.Background.Css};--slide-ink:{Card.Background.Ink};" +
+        $"--slide-dim:{Card.Background.Dim};--slide-rule:{Card.Background.Rule};" +
+        $"--slide-grain:{Card.Background.Grain.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
+    protected override void OnParametersSet()
+    {
+        _saved = Card.Saved;
+        _understood = Card.Understood;
+
+        // Reload only when the card actually changes, so reused component instances after a
+        // reshuffle refresh but ordinary re-renders (a save toggle) don't re-parse the page.
+        if (_loadedBook == Card.BookId && _loadedPage == Card.PageIndex) return;
+        _loadedBook = Card.BookId;
+        _loadedPage = Card.PageIndex;
+        _slides = null;
+        _pageBlocks = null;
+        _chapter = null;
+        _img = null;
+        _handoff = null;
+
+        // Loading waits for the first render: how much text belongs on a slide depends on how wide
+        // the card actually is, and that can only be measured once it's in the DOM.
+        _needsLoad = true;
+    }
+
+    private async Task LoadAsync()
+    {
+        // Extraction takes long enough that a reshuffle can land mid-flight. Remember which page
+        // this load is for and drop the result if the post has moved on, or the old page's text
+        // would be painted into the new card.
+        var book = Card.BookId;
+        var page = Card.PageIndex;
+        var path = Card.PdfPath;
+
+        var content = await PageText.GetPageContentAsync(book, path, page);
+        if (Superseded(book, page)) return;
+
+        var slides = content.RequiresRender
+            ? Array.Empty<CardSlide>()
+            : PageSplitter.Split(content.Blocks, PageSplitter.TargetFor(_cardWidth));
+
+        // No usable text layer (a scan, a full-page plate): show the page as it was printed.
+        if (slides.Count == 0)
+            slides = new[] { new CardSlide { IsRender = true } };
+
+        _slides = slides;
+        _pageBlocks = content.RequiresRender ? null : content.Blocks;
+        _needsFit = true;
+        await InvokeAsync(StateHasChanged);
+
+        if (slides.Any(s => s.IsRender))
+            await LoadImageAsync(book, page, path);
+
+        await LoadChapterAsync(book, page, path);
+    }
+
+    /// <summary>
+    /// Looked up after the slides so the page never waits on it. A book whose structure can't be
+    /// established leaves <c>_chapter</c> null and both entry points simply don't appear.
+    /// </summary>
+    private async Task LoadChapterAsync(int book, int page, string path)
+    {
+        var chapter = await Chapters.GetForPageAsync(book, path, page);
+        if (chapter is null || Superseded(book, page)) return;
+
+        _chapter = chapter;
+        _needsFit = true;   // the chapter card joins the carousel
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OpenChapter()
+    {
+        if (_chapter is null) return;
+        Nav.NavigateTo($"/read/{Card.BookId}/{Card.PageNumber}");
+    }
+
+    private async Task LoadImageAsync(int book, int page, string path)
+    {
+        var uri = await PageImages.GetPageDataUriAsync(book, path, page);
+        if (Superseded(book, page)) return;
+
+        _img = uri;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private bool Superseded(int book, int page) => _loadedBook != book || _loadedPage != page;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_needsLoad)
+        {
+            _needsLoad = false;
+
+            // Measure before splitting: the 520-character budget is calibrated for a 393px card, and
+            // on a narrower one it overfills badly enough that even the smallest type tier clips.
+            try { _cardWidth = await JS.InvokeAsync<double>("smCards.cardWidth", _media); }
+            catch (JSDisconnectedException) { return; }
+            catch { /* keep the reference width */ }
+
+            await LoadAsync();
+            return;
+        }
+
+        if (!_needsFit || _slides is null) return;
+        _needsFit = false;
+
+        // Measure and size the text now that the slides are in the DOM.
+        try { await JS.InvokeVoidAsync("smCards.init", _media); }
+        catch (JSDisconnectedException) { /* view torn down mid-load */ }
+    }
+
+    private async Task ToggleSave()
+    {
+        _saved = await SavedCards.ToggleAsync(Card.BookId, Card.PageIndex);
+        StateHasChanged();
+    }
+
+    private async Task ToggleUnderstood()
+    {
+        _understood = await Understood.TogglePageAsync(Card.BookId, Card.PageIndex);
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Puts the page on the clipboard wrapped in the reader's prompt, and opens ChatGPT on it.
+    /// The wording is theirs to edit (Profile, "ChatGPT prompt"); all this decides is which
+    /// page fills it, and the chapter is named whenever the book's outline gave us one.
+    /// </summary>
+    private async Task DiscussInChat()
+    {
+        if (_handingOff || _pageBlocks is not { Count: > 0 }) return;
+        _handingOff = true;
+
+        try
+        {
+            var prompt = await AiPrompts.ComposeAsync(new AiPromptContext
+            {
+                Book = Card.BookTitle,
+                Author = Card.Author,
+                Chapter = _chapter?.Title,
+                Page = Card.PageNumber,
+                PageCount = Card.PageCount,
+                Text = PlainText(_pageBlocks),
+            });
+
+            var outcome = await ChatHandoff.SendAsync(prompt);
+            _handoffOk = outcome != AiHandoff.Failed;
+            await Flash(outcome switch
+            {
+                AiHandoff.Prefilled => $"Page {Card.PageNumber} sent to ChatGPT",
+                AiHandoff.Opened => $"Page {Card.PageNumber} copied — paste it in ChatGPT",
+                AiHandoff.Web => $"Page {Card.PageNumber} copied — ChatGPT opened in the browser",
+                AiHandoff.Copied => $"Page {Card.PageNumber} copied — couldn't open ChatGPT",
+                _ => "Couldn't copy this page",
+            });
+        }
+        catch (Exception ex)
+        {
+            // A failed handoff is a dead end, not a broken feed: say so on the post and leave the
+            // rest of the session alone.
+            _handoffOk = false;
+            await Flash(ex.Message);
+        }
+        finally
+        {
+            _handingOff = false;
+        }
+    }
+
+    /// <summary>The page as one run of text, in reading order — figure captions included.</summary>
+    private static string PlainText(IReadOnlyList<PageBlock> blocks) =>
+        string.Join("\n\n", blocks.Select(b => b.Text.Trim()).Where(t => t.Length > 0));
+
+    /// <summary>Shows the toast, and takes it away again unless a later handoff has replaced it.</summary>
+    private async Task Flash(string message)
+    {
+        var seq = ++_handoffSeq;
+        _handoff = message;
+        StateHasChanged();
+
+        await Task.Delay(2600);
+        if (_handoffSeq != seq) return;
+
+        _handoff = null;
+        await InvokeAsync(StateHasChanged);
+    }
+}

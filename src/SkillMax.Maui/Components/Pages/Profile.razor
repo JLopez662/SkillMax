@@ -1,0 +1,61 @@
+@page "/profile"
+@inject IBookService Books
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<div class="topbar">
+    <div class="handle"><Icon Name="lock" Size="14" /> jorge</div>
+    <button class="ic" aria-label="Toggle theme" @onclick="ToggleTheme"><Icon Name="settings" /></button>
+</div>
+
+<div class="phead">
+    <div class="prow">
+        <div class="pava"><span>J</span></div>
+        <div class="pstats">
+            <div class="pstat"><b>@_books</b><span>books</span></div>
+            <div class="pstat"><b>@_pages</b><span>pages</span></div>
+            <div class="pstat"><b>@_day</b><span>day</span></div>
+        </div>
+    </div>
+    <div class="pbio">
+        <h3>SkillMax</h3>
+        <p>Replacing the doomscroll, one page at a time.</p>
+    </div>
+    <div class="pbtns">
+        <button class="pbtn primary" @onclick='() => Nav.NavigateTo("/import")'>Import PDF</button>
+        <button class="pbtn" @onclick="ToggleTheme">Theme</button>
+    </div>
+</div>
+
+<div class="plist">
+    <button class="srow" @onclick='() => Nav.NavigateTo("/settings/categories")'>
+        <span class="srow__ic"><Icon Name="tag" Size="16" /></span>
+        <span class="srow__t">
+            <b>Categories</b>
+            <span>Group your books and sources — Coding, AI, whatever fits</span>
+        </span>
+        <span class="srow__arw"><Icon Name="chevron-right" Size="15" /></span>
+    </button>
+    <button class="srow" @onclick='() => Nav.NavigateTo("/settings/prompt")'>
+        <span class="srow__ic"><Icon Name="sparkles" Size="16" /></span>
+        <span class="srow__t">
+            <b>ChatGPT prompt</b>
+            <span>What a page says when you send it to the chat</span>
+        </span>
+        <span class="srow__arw"><Icon Name="chevron-right" Size="15" /></span>
+    </button>
+</div>
+
+@code {
+    private int _books;
+    private int _pages;
+    private int _day = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _books = await Books.GetBookCountAsync();
+        _pages = await Books.GetPagesSeenTotalAsync();
+    }
+
+    private async Task ToggleTheme() => await JS.InvokeVoidAsync("smTheme.toggle");
+}

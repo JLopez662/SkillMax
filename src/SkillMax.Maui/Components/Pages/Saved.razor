@@ -1,0 +1,35 @@
+@page "/saved"
+@inject ISavedCardService SavedCards
+
+<div class="topbar">
+    <div class="ttl">Saved</div>
+</div>
+
+@if (_cards is null)
+{
+    <div class="muted-center">Loading…</div>
+}
+else if (_cards.Count == 0)
+{
+    <div class="empty">
+        <div class="empty__ic"><Icon Name="bookmark" Size="42" /></div>
+        <h2>Nothing saved yet</h2>
+        <p>Tap the bookmark on any page to save it here and resurface it later.</p>
+    </div>
+}
+else
+{
+    <div class="feed">
+        @for (var i = 0; i < _cards.Count; i++)
+        {
+            var card = _cards[i];
+            <FeedPost Card="card" @key="i" />
+        }
+    </div>
+}
+
+@code {
+    private IReadOnlyList<FeedCard>? _cards;
+
+    protected override async Task OnInitializedAsync() => _cards = await SavedCards.GetSavedAsync();
+}

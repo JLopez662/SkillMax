@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>SkillMax</title>
+    <base href="/" />
+    <script>
+        // Apply the saved theme to <html> before any CSS parses (no flash of wrong palette).
+        // Source of truth is localStorage ('skillmax-theme'); default dark. The in-app toggle
+        // calls window.smTheme.toggle().
+        (function () {
+            try {
+                var t = localStorage.getItem('skillmax-theme') || 'dark';
+                document.documentElement.setAttribute('data-theme', t);
+            } catch (e) { document.documentElement.setAttribute('data-theme', 'dark'); }
+            window.smTheme = {
+                get: function () { try { return localStorage.getItem('skillmax-theme') || 'dark'; } catch (e) { return 'dark'; } },
+                set: function (t) { try { localStorage.setItem('skillmax-theme', t); } catch (e) { } document.documentElement.setAttribute('data-theme', t); return t; },
+                toggle: function () { return this.set(this.get() === 'dark' ? 'light' : 'dark'); }
+            };
+            // Replay the page-fade animation on navigation WITHOUT recreating the routed
+            // component (MainLayout calls this on each LocationChanged).
+            window.smPageFade = function () {
+                var el = document.getElementById('app-content');
+                if (!el) return;
+                el.classList.remove('page-fade');
+                void el.offsetWidth;
+                el.classList.add('page-fade');
+            };
+        })();
+    </script>
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="SkillMax.Maui.styles.css" />
+    <link rel="stylesheet" href="css/theme.css" />
+    <link rel="icon" href="data:," />
+    <style>
+        /* Paint a black backdrop from the first frame so there's no white/black flash. */
+        [data-theme="light"] { --boot-bg: #ffffff; }
+        html, body { margin: 0; min-height: 100%; background: var(--boot-bg, #000); }
+        .boot { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .boot b {
+            font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+            font-size: 26px; font-weight: 800; letter-spacing: -.02em;
+            background: linear-gradient(45deg, #feda75, #fa7e1e 22%, #d62976 52%, #962fbf 78%, #4f5bd5);
+            -webkit-background-clip: text; background-clip: text; color: transparent;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="status-bar-safe-area"></div>
+
+    <div id="app">
+        <div class="boot"><b>SkillMax</b></div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="" class="reload">Reload</a>
+        <a class="dismiss">🗙</a>
+    </div>
+
+    <script src="js/cards.js"></script>
+    <script src="_framework/blazor.webview.js" autostart="false"></script>
+</body>
+</html>

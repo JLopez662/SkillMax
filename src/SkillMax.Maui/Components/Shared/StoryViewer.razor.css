@@ -1,0 +1,325 @@
+/* Over everything, including the tab bar (z-index 50). Pinned to the same 480px column the
+   shell uses, so the desktop inner loop doesn't stretch a 9:16 video across the window. */
+.viewer {
+    position: fixed;
+    inset: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 480px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    background: #000;
+    color: #fff;
+    overflow: hidden;
+    touch-action: none;
+    animation: story-in .22s cubic-bezier(.2, .8, .2, 1);
+}
+
+@keyframes story-in {
+    from { opacity: 0; transform: translateX(-50%) scale(.94); }
+    to { opacity: 1; transform: translateX(-50%) scale(1); }
+}
+
+/* ---------- the video plane ---------- */
+.reel {
+    position: absolute;
+    inset: 0;
+    background: #05050a;
+}
+
+.player,
+.poster {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+}
+
+.poster { object-fit: cover; }
+
+/* Shade for the chrome to sit on, and the top half is doing a second job. An embed with
+   controls=0 still paints YouTube's own title and channel name across the top of the frame
+   whenever the video isn't playing — which is every time a tap loads the next one — and that
+   lands exactly where this viewer's header is. Nothing turns it off, so the scrim is heavy
+   enough to bury it: near-opaque over the band it occupies, then out by a quarter of the way
+   down. Stories carry a dark top anyway, so the cost is nil and the header reads better for it. */
+.vig {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(180deg,
+            rgba(0, 0, 0, .95) 0,
+            rgba(0, 0, 0, .92) 9%,
+            rgba(0, 0, 0, .55) 17%,
+            transparent 26%),
+        linear-gradient(0deg, rgba(0, 0, 0, .74), transparent 34%);
+}
+
+/* Above the player, below the chrome. */
+.zones {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+}
+
+/* ---------- chrome ---------- */
+.bars,
+.head,
+.why,
+.foot {
+    position: relative;
+    z-index: 4;
+}
+
+.bars {
+    display: flex;
+    gap: 3px;
+    padding: 12px 10px 0;
+    margin-top: env(safe-area-inset-top, 0);
+}
+
+.bar {
+    flex: 1;
+    height: 2.5px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, .32);
+    overflow: hidden;
+}
+
+.bar span {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: #fff;
+    border-radius: 2px;
+}
+
+.head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 11px 12px 0;
+}
+
+.ava {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    flex: none;
+    border-radius: 50%;
+    overflow: hidden;   /* clips both layers, so neither carries its own radius */
+}
+
+/* Picture over initial, stacked by DOM order — the picture is second in the markup. */
+.ava > * {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16);
+}
+
+.ava img { object-fit: cover; }
+
+.ava .letter {
+    display: grid;
+    place-items: center;
+    font-size: 13px;
+    font-weight: 800;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, .4);
+}
+
+.who {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    min-width: 0;
+}
+
+.handle {
+    font-size: 13.5px;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ago {
+    flex: none;
+    font-size: 12px;
+    color: rgba(255, 255, 255, .6);
+}
+
+.x {
+    margin-left: auto;
+    flex: none;
+    display: grid;
+    place-items: center;
+    padding: 4px;
+    background: none;
+    border: 0;
+    color: #fff;
+    cursor: pointer;
+}
+
+/* Says out loud that the pick was a coin toss. */
+.why {
+    align-self: flex-start;
+    margin: 8px 12px 0;
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, .42);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .16);
+    backdrop-filter: blur(7px);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, .82);
+}
+
+/* ---------- caption and controls ---------- */
+.foot {
+    margin-top: auto;
+    padding: 0 14px 18px;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+}
+
+.title {
+    font-size: 14.5px;
+    font-weight: 600;
+    line-height: 1.35;
+    margin-bottom: 12px;
+    text-wrap: balance;
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Re-rolling is the primary verb here: the deck is random, so "a different one" is the point,
+   not a gesture to discover. */
+.roll,
+.act {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 46px;
+    border: 0;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .14);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .2);
+    backdrop-filter: blur(9px);
+    color: #fff;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.roll {
+    flex: 1;
+    gap: 8px;
+    font-size: 13.5px;
+    font-weight: 650;
+}
+
+.act {
+    width: 46px;
+    flex: none;
+}
+
+.roll:active,
+.act:active { background: rgba(255, 255, 255, .24); }
+
+.act.marked { color: var(--ig-red); }
+
+/* ---------- states over the video ---------- */
+.paused {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+}
+
+.paused span {
+    display: flex;
+    gap: 5px;
+    padding: 14px 16px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, .4);
+    backdrop-filter: blur(8px);
+}
+
+.paused i {
+    display: block;
+    width: 5px;
+    height: 22px;
+    border-radius: 2px;
+    background: #fff;
+}
+
+.toast {
+    position: absolute;
+    z-index: 6;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    align-items: center;
+    text-align: center;
+    max-width: 78%;
+    padding: 16px 20px;
+    border-radius: 16px;
+    background: rgba(10, 10, 14, .86);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14);
+    backdrop-filter: blur(10px);
+}
+
+.toast b { font-size: 13.5px; font-weight: 700; }
+.toast span { font-size: 11.5px; color: rgba(255, 255, 255, .66); line-height: 1.45; }
+
+.end {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 0 34px;
+    text-align: center;
+    background: rgba(4, 4, 8, .9);
+}
+
+.end b { font-size: 17px; font-weight: 800; }
+.end span { font-size: 13px; color: rgba(255, 255, 255, .64); line-height: 1.5; max-width: 30ch; }
+
+.end button {
+    margin-top: 6px;
+    padding: 11px 22px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--ig-blue);
+    color: #fff;
+    font-size: 13.5px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .viewer { animation: none; }
+}
